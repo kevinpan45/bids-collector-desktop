@@ -19,11 +19,7 @@
     "electron": "electron .",
     "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
     "electron:build": "npm run build && electron-builder",
-    "electron:dist": "npm run build && electron-builder --publish=never",
-    "electron:build-all": "npm run build && electron-builder --win --mac --linux",
-    "electron:build-win": "npm run build && electron-builder --win",
-    "electron:build-mac": "npm run build && electron-builder --mac",
-    "electron:build-linux": "npm run build && electron-builder --linux"
+    "electron:dist": "npm run build && electron-builder --publish=never"
   },
   "devDependencies": {
     "@iconify/svelte": "^4.0.2",
@@ -75,21 +71,13 @@
     "win": {
       "target": [
         {
-          "target": "nsis",
-          "arch": ["x64", "ia32"]
-        },
-        {
-          "target": "portable", 
+          "target": "msi",
           "arch": ["x64"]
         }
       ]
     },
     "linux": {
       "target": [
-        {
-          "target": "AppImage",
-          "arch": ["x64"]
-        },
         {
           "target": "deb",
           "arch": ["x64"]
