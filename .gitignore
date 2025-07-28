@@ -98,6 +98,9 @@ dist
 # Sveltekit cache directory
 .svelte-kit/
 
+# SvelteKit build output
+build/
+
 # vitepress build output
 **/.vitepress/dist
 
@@ -137,3 +140,48 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Electron build output
+dist-electron/
+
+# Electron cache
+.electron/
+
+# Code signing certificates (for macOS/Windows builds)
+*.p12
+*.pfx
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE/Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+*.temp
+
+# Package manager lock files (if using different managers)
+# Uncomment if you want to ignore specific lock files
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# Auto-updater files
+app-update.yml
+latest*.yml
+
+# Testing
+coverage/
+.nyc_output/
+package-lock.json
