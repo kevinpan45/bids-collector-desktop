@@ -41,7 +41,7 @@
         {/if}
         
         <div class="flex gap-4">
-          <a href="/job" class="btn btn-primary">Manage Jobs</a>
+          <a href="/dataset" class="btn btn-primary">Collect Dataset</a>
           <a href="/profile" class="btn btn-secondary">View Profile</a>
         </div>
       </div>

@@ -54,7 +54,6 @@
     collapsed = sessionStorage.getItem("sidebar-collapsed") === "true";
     if (user) {
       username = user.name || user.email;
-      console.log('Current logged user info:', user);
     }
   });
 

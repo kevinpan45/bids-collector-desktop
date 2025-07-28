@@ -1,24 +1,17 @@
 let menus = [
-    { 
-        name: "dashboard", 
-        link: "/", 
-        alias: "Dashboard", 
-        icon: "heroicons:home", 
-        enabled: true 
+    {
+        name: "Dataset",
+        link: "/dataset",
+        alias: "Dataset",
+        icon: "dataset",
+        enabled: true
     },
-    { 
-        name: "profile", 
-        link: "/profile", 
-        alias: "Profile", 
-        icon: "profile", 
-        enabled: true 
-    },
-    { 
-        name: "job", 
-        link: "/job", 
-        alias: "Job Management", 
-        icon: "heroicons:briefcase", 
-        enabled: true 
+    {
+        name: "storage",
+        link: "/storage",
+        alias: "Storage",
+        icon: "storage",
+        enabled: true
     }
 ];
 
