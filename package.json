@@ -14,12 +14,12 @@
   },
   "scripts": {
     "dev": "vite dev",
-    "build": "vite build",
+    "build": "vite build && node fix-paths.mjs",
     "preview": "vite preview",
     "electron": "electron .",
     "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
-    "electron:build": "npm run build && electron-builder",
-    "electron:dist": "npm run build && electron-builder --publish=never"
+    "electron:build": "npm run build && electron-builder --win --x64",
+    "electron:dist": "npm run build && electron-builder --win --x64 --publish=never"
   },
   "devDependencies": {
     "@iconify/svelte": "^4.0.2",
@@ -47,7 +47,8 @@
   },
   "build": {
     "appId": "com.bids.collector.desktop",
-    "productName": "BIDS Collector Desktop",
+    "productName": "BIDS-Collector-Desktop",
+    "artifactName": "${productName}-${version}-${arch}.${ext}",
     "directories": {
       "output": "dist-electron"
     },
@@ -56,39 +57,29 @@
       "electron/**/*",
       "node_modules/**/*"
     ],
-    "electronDownload": {
-      "mirror": "https://github.com/electron/electron/releases/"
-    },
-    "mac": {
-      "category": "public.app-category.productivity",
-      "target": [
-        {
-          "target": "dmg",
-          "arch": ["x64", "arm64"]
-        }
-      ]
-    },
+    "asarUnpack": [
+      "electron/preload.js"
+    ],
     "win": {
       "target": [
         {
-          "target": "msi",
+          "target": "nsis",
           "arch": ["x64"]
-        }
-      ]
-    },
-    "linux": {
-      "target": [
+        },
         {
-          "target": "deb",
+          "target": "portable",
           "arch": ["x64"]
         }
       ]
     },
     "nsis": {
+      "artifactName": "${productName}-Setup-${version}-${arch}.${ext}",
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
-      "deleteAppDataOnUninstall": false
+      "deleteAppDataOnUninstall": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
     }
   }
 }

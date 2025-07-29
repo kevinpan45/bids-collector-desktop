@@ -147,7 +147,7 @@ dist-electron/
 # Electron cache
 .electron/
 
-# Code signing certificates (for macOS/Windows builds)
+# Code signing certificates (for Windows builds)
 *.p12
 *.pfx
 

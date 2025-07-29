@@ -1,10 +1,10 @@
 # BIDS Collector Desktop
 
-A desktop application built with SvelteKit and Electron for managing and collecting BIDS data.
+A Windows desktop application built with SvelteKit and Electron for managing and collecting BIDS data.
 
 ## Features
 
-- 🖥️ Cross-platform desktop application (Windows, macOS, Linux)
+- 🖥️ Windows x64 desktop application
 - 🚀 Built with SvelteKit for modern web development
 - 🔒 Auth0 integration for secure authentication
 - 🎨 Beautiful UI with Tailwind CSS and DaisyUI
@@ -60,8 +60,12 @@ npm run build
 ```
 
 #### Electron Distribution
-Create distributable packages:
+Create Windows x64 distributable packages:
 ```bash
+# Build Windows x64 version
+npm run electron:build
+
+# Build for distribution without publishing
 npm run electron:dist
 ```
 
@@ -89,8 +93,8 @@ bids-collector-desktop/
 - `npm run preview` - Preview production build
 - `npm run electron` - Run Electron with built app
 - `npm run electron:dev` - Run Electron in development mode
-- `npm run electron:build` - Build Electron app
-- `npm run electron:dist` - Create distribution packages
+- `npm run electron:build` - Build Windows x64 Electron app
+- `npm run electron:dist` - Create Windows x64 distribution packages
 
 ## Authentication
 
@@ -102,20 +106,23 @@ The application uses Auth0 for authentication. Make sure to:
 
 ## Troubleshooting
 
+### Windows Build Issues
+If you encounter build issues:
+
+1. Ensure you have the latest Windows SDK installed
+2. Make sure Visual Studio Build Tools are installed
+3. Try clearing the electron cache: `npx electron-builder clean`
+
 ### Electron Library Issues
-If you encounter library issues with Electron, try:
-
-1. Install system dependencies (Ubuntu/Debian):
-```bash
-sudo apt-get install libnspr4 libnss3 libxss1 libgconf-2-4 libxrandr2 libasound2 libpangocairo-1.0-0 libgtk-3-0
-```
-
-2. For other systems, refer to the Electron documentation.
+For Windows-specific issues, ensure you have:
+- Microsoft Visual C++ Redistributable installed
+- Windows 10/11 with latest updates
 
 ### Build Issues
 - Ensure all dependencies are installed
-- Check that the favicon exists in the static folder
+- Check that the favicon exists in the static folder  
 - Verify environment variables are set correctly
+- For Windows builds, ensure Wine is properly configured (if building on non-Windows)
 
 ## Contributing
 
