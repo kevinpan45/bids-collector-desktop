@@ -167,6 +167,12 @@ Thumbs.db
 # yarn.lock
 # pnpm-lock.yaml
 
+# Rust/Tauri build artifacts
+src-tauri/target/
+
+# SvelteKit build output
+build/
+
 # Auto-updater files
 app-update.yml
 latest*.yml

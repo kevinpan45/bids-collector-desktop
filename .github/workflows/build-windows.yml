@@ -1,0 +1,84 @@
+name: Build Windows Desktop App
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: x86_64-pc-windows-msvc
+
+    - name: Rust cache
+      uses: swatinem/rust-cache@v2
+      with:
+        workspaces: './src-tauri -> target'
+
+    - name: Install frontend dependencies
+      run: npm install
+
+    - name: Build frontend
+      run: npm run build
+
+    - name: Build Windows desktop app
+      run: npm run tauri:build:win
+
+    - name: Upload Windows Installers
+      uses: actions/upload-artifact@v4
+      with:
+        name: windows-installers
+        path: |
+          src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
+          src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+        retention-days: 30
+
+    - name: Upload Windows Executable
+      uses: actions/upload-artifact@v4
+      with:
+        name: windows-executable
+        path: src-tauri/target/x86_64-pc-windows-msvc/release/*.exe
+        retention-days: 30
+
+  build-info:
+    runs-on: ubuntu-latest
+    needs: build-windows
+    if: always()
+    
+    steps:
+    - name: Build Summary
+      run: |
+        echo "## Build Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Windows Build" >> $GITHUB_STEP_SUMMARY
+        if [ "${{ needs.build-windows.result }}" == "success" ]; then
+          echo "✅ **Success** - Windows desktop app built successfully" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Available Downloads:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Windows MSI Installer" >> $GITHUB_STEP_SUMMARY
+          echo "- Windows NSIS Installer" >> $GITHUB_STEP_SUMMARY
+          echo "- Windows Executable" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ **Failed** - Windows build failed" >> $GITHUB_STEP_SUMMARY
+        fi
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Target Platform" >> $GITHUB_STEP_SUMMARY
+        echo "- **Platform**: Windows x64" >> $GITHUB_STEP_SUMMARY
+        echo "- **Architecture**: x86_64-pc-windows-msvc" >> $GITHUB_STEP_SUMMARY
+        echo "- **Bundle Types**: MSI, NSIS" >> $GITHUB_STEP_SUMMARY
