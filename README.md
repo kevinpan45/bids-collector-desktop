@@ -56,16 +56,6 @@ Build the application for production:
 npm run build
 ```
 
-#### Electron Distribution
-Create Windows x64 distributable packages:
-```bash
-# Build Windows x64 version
-npm run electron:build
-
-# Build for distribution without publishing
-npm run electron:dist
-```
-
 ## Project Structure
 
 ```
@@ -79,8 +69,7 @@ bids-collector-desktop/
 │   ├── component/     # Svelte components
 │   └── app.html       # HTML template
 ├── static/            # Static assets
-├── build/             # Built SvelteKit app
-└── dist-electron/     # Electron distribution files
+└── build/             # Built SvelteKit app
 ```
 
 ## Scripts
@@ -90,8 +79,6 @@ bids-collector-desktop/
 - `npm run preview` - Preview production build
 - `npm run electron` - Run Electron with built app
 - `npm run electron:dev` - Run Electron in development mode
-- `npm run electron:build` - Build Windows x64 Electron app
-- `npm run electron:dist` - Create Windows x64 distribution packages
 
 ## Local-First Architecture
 
@@ -103,13 +90,6 @@ This application is designed as a local-first desktop application:
 - Simple and secure local user management
 
 ## Troubleshooting
-
-### Windows Build Issues
-If you encounter build issues:
-
-1. Ensure you have the latest Windows SDK installed
-2. Make sure Visual Studio Build Tools are installed
-3. Try clearing the electron cache: `npx electron-builder clean`
 
 ### Electron Library Issues
 For Windows-specific issues, ensure you have:

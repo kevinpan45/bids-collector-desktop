@@ -124,14 +124,7 @@ if (pathname.endsWith('/index.html')) {
 - **SvelteKit Config**: Static adapter with `fallback: 'index.html'`
 - **Electron Version**: 37.2.4
 - **Target Platform**: Windows x64 only
-- **Package Format**: ASAR with selective unpacking
 - **Navigation Fix**: Variable scope corrected for proper handler operation
-
-## Build Results
-
-- **Setup Installer**: `BIDS-Collector-Desktop-Setup-0.0.1-x64.exe` (88.4 MB)
-- **Portable Version**: `BIDS-Collector-Desktop-0.0.1-x64.exe` (88.2 MB)
-- **Unpacked Application**: Available in `dist-electron/win-unpacked/`
 
 ## Status
 ✅ **RESOLVED** - Critical variable scope issue fixed. Navigation errors resolved with comprehensive triple-layer protection system that now has proper access to the `indexPath` variable.

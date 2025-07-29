@@ -17,9 +17,7 @@
     "build": "vite build && node fix-paths.mjs",
     "preview": "vite preview",
     "electron": "electron .",
-    "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
-    "electron:build": "npm run build && electron-builder --win --x64",
-    "electron:dist": "npm run build && electron-builder --win --x64 --publish=never"
+    "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && electron .\""
   },
   "devDependencies": {
     "@iconify/svelte": "^4.0.2",
@@ -30,7 +28,6 @@
     "concurrently": "^8.2.2",
     "daisyui": "^4.7.3",
     "electron": "^37.2.4",
-    "electron-builder": "^26.0.12",
     "postcss": "8.4.35",
     "svelte": "^4.0.0",
     "svelte-time": "^0.8.2",
@@ -43,42 +40,5 @@
   "dependencies": {
     "axios": "1.9.0",
     "svelte-french-toast": "1.2.0"
-  },
-  "build": {
-    "appId": "com.bids.collector.desktop",
-    "productName": "BIDS-Collector-Desktop",
-    "artifactName": "${productName}-${version}-${arch}.${ext}",
-    "directories": {
-      "output": "dist-electron"
-    },
-    "files": [
-      "build/**/*",
-      "electron/**/*",
-      "node_modules/**/*"
-    ],
-    "asarUnpack": [
-      "electron/preload.js"
-    ],
-    "win": {
-      "target": [
-        {
-          "target": "nsis",
-          "arch": ["x64"]
-        },
-        {
-          "target": "portable",
-          "arch": ["x64"]
-        }
-      ]
-    },
-    "nsis": {
-      "artifactName": "${productName}-Setup-${version}-${arch}.${ext}",
-      "oneClick": false,
-      "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
-      "deleteAppDataOnUninstall": false,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
-    }
   }
 }
