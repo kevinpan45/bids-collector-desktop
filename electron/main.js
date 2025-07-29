@@ -102,6 +102,29 @@ const getStorageConfig = (id) => {
 function createWindow() {
   console.log('Creating main window...');
   
+  // Get the index.html path first - needed by navigation handlers
+  let indexPath;
+  if (isDev) {
+    indexPath = path.join(__dirname, '../build/index.html');
+  } else {
+    // In production, the build directory is at the same level as electron directory in ASAR
+    indexPath = path.join(__dirname, '../build/index.html');
+    
+    // If that doesn't exist, try alternative paths
+    if (!fs.existsSync(indexPath)) {
+      const altPath = path.join(process.resourcesPath, 'app.asar', 'build', 'index.html');
+      if (fs.existsSync(altPath)) {
+        indexPath = altPath;
+      } else {
+        // Fallback to app path
+        indexPath = path.join(app.getAppPath(), 'build', 'index.html');
+      }
+    }
+  }
+  
+  console.log('Index path determined:', indexPath);
+  console.log('Index file exists:', fs.existsSync(indexPath));
+  
   // Get the preload script path - works in both dev and production
   let preloadPath;
   if (isDev) {
@@ -139,13 +162,63 @@ function createWindow() {
     // If load failed and it's a file:// URL, try to redirect to index.html
     if (validatedURL.startsWith('file://') && errorCode !== 0) {
       console.log('Load failed, attempting to redirect to index.html');
-      setTimeout(() => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.loadFile(indexPath).catch(fallbackError => {
-            console.error('Failed to load fallback index.html:', fallbackError);
-          });
+      
+      // Special handling for index.html requests that fail
+      if (validatedURL.includes('index.html') || validatedURL.endsWith('/')) {
+        console.log('Index.html or root request failed, using fallback index.html');
+        setTimeout(() => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.loadFile(indexPath).catch(fallbackError => {
+              console.error('Failed to load fallback index.html:', fallbackError);
+            });
+          }
+        }, 100);
+      } else {
+        // For other failed routes, try to find appropriate HTML file or fallback to index
+        try {
+          const url = new URL(validatedURL);
+          const pathname = url.pathname;
+          let routePath = pathname.replace(/\/$/, '');
+          if (routePath.startsWith('/')) {
+            routePath = routePath.substring(1);
+          }
+          
+          if (routePath) {
+            const buildDir = path.dirname(indexPath);
+            const possibleHtmlFiles = [
+              path.join(buildDir, `${routePath}.html`),
+              path.join(buildDir, routePath, 'index.html'),
+              indexPath // Always fallback to main index.html
+            ];
+            
+            for (const htmlFile of possibleHtmlFiles) {
+              if (fs.existsSync(htmlFile)) {
+                console.log('Loading fallback HTML file:', htmlFile);
+                setTimeout(() => {
+                  if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.loadFile(htmlFile).catch(fallbackError => {
+                      console.error('Failed to load fallback HTML file:', fallbackError);
+                    });
+                  }
+                }, 100);
+                return;
+              }
+            }
+          }
+        } catch (urlError) {
+          console.error('Error parsing failed URL:', urlError);
         }
-      }, 100);
+        
+        // Ultimate fallback to index.html
+        console.log('Using ultimate fallback to index.html');
+        setTimeout(() => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.loadFile(indexPath).catch(fallbackError => {
+              console.error('Failed to load ultimate fallback index.html:', fallbackError);
+            });
+          }
+        }, 100);
+      }
     }
   });
 
@@ -175,6 +248,18 @@ function createWindow() {
       try {
         const urlObj = new URL(url);
         const pathname = urlObj.pathname;
+        
+        // Handle direct requests to index.html that might not exist at the requested path
+        if (pathname.endsWith('/index.html')) {
+          // Check if the requested file exists
+          const requestedPath = urlObj.pathname.replace(/^\//, '').replace(/\//g, path.sep);
+          if (!fs.existsSync(requestedPath)) {
+            console.log('Index.html request intercepted, redirecting to build index.html');
+            const redirectUrl = `file://${indexPath.replace(/\\/g, '/')}`;
+            callback({ redirectURL: redirectUrl });
+            return;
+          }
+        }
         
         // Check if this is a route request (no file extension and not in _app directory)
         if (!path.extname(pathname) && !pathname.includes('/_app/') && pathname !== '/') {
@@ -222,25 +307,6 @@ function createWindow() {
   });
 
   // Load the app
-  let indexPath;
-  if (isDev) {
-    indexPath = path.join(__dirname, '../build/index.html');
-  } else {
-    // In production, the build directory is at the same level as electron directory in ASAR
-    indexPath = path.join(__dirname, '../build/index.html');
-    
-    // If that doesn't exist, try alternative paths
-    if (!fs.existsSync(indexPath)) {
-      const altPath = path.join(process.resourcesPath, 'app.asar', 'build', 'index.html');
-      if (fs.existsSync(altPath)) {
-        indexPath = altPath;
-      } else {
-        // Fallback to app path
-        indexPath = path.join(app.getAppPath(), 'build', 'index.html');
-      }
-    }
-  }
-  
   console.log('Loading file:', indexPath);
   console.log('File exists:', fs.existsSync(indexPath));
   console.log('App path:', app.getAppPath());
@@ -312,6 +378,16 @@ function createWindow() {
       if (url.protocol === 'file:') {
         const pathname = url.pathname;
         console.log('Navigation attempt to:', pathname);
+        
+        // Handle direct navigation to index.html
+        if (pathname.endsWith('/index.html') && !fs.existsSync(pathname)) {
+          event.preventDefault();
+          console.log('Direct index.html navigation detected, redirecting to build index.html');
+          mainWindow.loadFile(indexPath).catch(loadError => {
+            console.error('Failed to load index.html:', loadError);
+          });
+          return;
+        }
         
         // Skip if it's already pointing to a specific file
         if (path.extname(pathname)) {

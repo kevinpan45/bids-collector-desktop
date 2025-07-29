@@ -1,15 +1,9 @@
 <script>
   import { onMount } from 'svelte';
-  import { user, isAuthenticated } from '$lib/auth.js';
   
   let mounted = false;
   onMount(() => {
     mounted = true;
-    
-    // Console log the current logged user info when load home page
-    if (user) {
-      console.log('Current logged user info:', user);
-    }
   });
 </script>
 
@@ -30,19 +24,13 @@
         <p class="py-6">
           A modern desktop application for BIDS data collection and management. 
           Built with <a href="https://svelte.dev" target="_blank" class="link">Svelte</a> 
-          and <a href="https://daisyui.com" target="_blank" class="link">DaisyUI</a>, 
-          with authentication powered by <a href="https://auth0.com" target="_blank" class="link">Auth0</a>.
+          and <a href="https://daisyui.com" target="_blank" class="link">DaisyUI</a>
+          for local-first data management.
         </p>
-        
-        {#if isAuthenticated && user}
-          <div class="alert alert-success mb-4">
-            <span>Welcome back, {user.name || user.email}!</span>
-          </div>
-        {/if}
         
         <div class="flex gap-4">
           <a href="/dataset" class="btn btn-primary">Collect Dataset</a>
-          <a href="/profile" class="btn btn-secondary">View Profile</a>
+          <a href="/storage" class="btn btn-secondary">Manage Storage</a>
         </div>
       </div>
     </div>

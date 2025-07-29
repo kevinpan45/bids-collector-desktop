@@ -6,7 +6,7 @@ A Windows desktop application built with SvelteKit and Electron for managing and
 
 - 🖥️ Windows x64 desktop application
 - 🚀 Built with SvelteKit for modern web development
-- 🔒 Auth0 integration for secure authentication
+- � Local-first data management
 - 🎨 Beautiful UI with Tailwind CSS and DaisyUI
 - 📦 Electron for native desktop experience
 
@@ -31,12 +31,9 @@ npm install
 ```
 
 3. Set up environment variables:
-Copy `.env.example` to `.env` and fill in your Auth0 credentials:
+Copy `.env.example` to `.env` and configure your API server:
 ```
-VITE_AUTH0_DOMAIN=your-auth0-domain
-VITE_AUTH0_CLIENT_ID=your-auth0-client-id
 VITE_API_SERVER=http://localhost:8080
-VITE_PROTECTED_ROUTES=/job,/dataset
 ```
 
 ### Development
@@ -78,7 +75,7 @@ bids-collector-desktop/
 │   └── assets/        # Electron assets
 ├── src/               # SvelteKit source code
 │   ├── routes/        # SvelteKit routes
-│   ├── lib/           # Shared libraries (Auth0, etc.)
+│   ├── lib/           # Shared libraries
 │   ├── component/     # Svelte components
 │   └── app.html       # HTML template
 ├── static/            # Static assets
@@ -96,13 +93,14 @@ bids-collector-desktop/
 - `npm run electron:build` - Build Windows x64 Electron app
 - `npm run electron:dist` - Create Windows x64 distribution packages
 
-## Authentication
+## Local-First Architecture
 
-The application uses Auth0 for authentication. Make sure to:
+This application is designed as a local-first desktop application:
 
-1. Set up an Auth0 application
-2. Configure the callback URLs in Auth0 dashboard
-3. Update the environment variables with your Auth0 credentials
+- Data is stored locally using Electron's built-in storage capabilities
+- No external authentication required
+- All features work offline
+- Simple and secure local user management
 
 ## Troubleshooting
 
