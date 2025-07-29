@@ -25,7 +25,7 @@
     
     <div class="flex-0">
       <div class="text-sm font-medium text-base-content/70">
-        BIDS Collector
+        <!-- BIDS Collector -->
       </div>
     </div>
   </nav>

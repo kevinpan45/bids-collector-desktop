@@ -3,21 +3,21 @@ let menus = [
         name: "dashboard", 
         link: "/", 
         alias: "Dashboard", 
-        icon: "heroicons:home", 
+        icon: "dashboard", 
         enabled: true 
     },
     { 
         name: "dataset", 
         link: "/dataset", 
         alias: "Datasets", 
-        icon: "heroicons:folder-open", 
+        icon: "dataset", 
         enabled: true 
     },
     { 
         name: "storage", 
         link: "/storage", 
         alias: "Storage", 
-        icon: "heroicons:server", 
+        icon: "storage", 
         enabled: true 
     }
 ];

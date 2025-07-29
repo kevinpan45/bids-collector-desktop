@@ -9,7 +9,7 @@
 - **DaisyUI Theme**: Dark theme with consistent styling
 
 ### 🔧 Component Architecture
-- **Icon System**: Dual support for static SVGs and Iconify icons
+- **Icon System**: Dual support for static SVGs and Iconify icons with custom BIDS-focused icons
 - **Menu Configuration**: Centralized menu management in `src/lib/menu.js`
 - **Sidebar MenuItem**: Recursive menu items with tooltips and state management
 - **Clean Navigation**: Simplified navigation focused on data management
@@ -26,20 +26,23 @@ src/
 ├── component/
 │   ├── icon/
 │   │   └── Icon.svelte          # Dual icon system (static/iconify)
-│   ├── Navbar.svelte            # Professional header component
+│   ├── Navbar.svelte            # Clean application header
 │   ├── Sidebar.svelte           # Collapsible navigation sidebar
-│   ├── SidebarMenuItem.svelte   # Recursive menu item component
-│   └── UserMenu.svelte          # User dropdown menu
+│   └── SidebarMenuItem.svelte   # Recursive menu item component
 ├── lib/
-│   ├── auth.js                  # Auth0 authentication module
-│   ├── menu.js                  # Centralized menu configuration
+│   ├── menu.js                  # Navigation menu configuration
 │   └── svgs/
-│       └── profile.svg          # Static SVG icons
+│       ├── dashboard.svg        # Custom dashboard icon
+│       ├── dataset.svg          # Custom dataset icon
+│       ├── storage.svg          # Custom storage icon
+│       ├── settings.svg         # Settings icon
+│       ├── document.svg         # Document icon
+│       ├── search.svg           # Search icon
+│       ├── download.svg         # Download icon
+│       └── README.md            # Icon documentation
 └── routes/
     ├── +layout.svelte           # Main application layout
     ├── +page.svelte             # Dashboard home page
-    ├── job/
-    │   └── +page.svelte         # Job management page
     ├── dataset/
     │   └── +page.svelte         # Dataset management page
     └── storage/
