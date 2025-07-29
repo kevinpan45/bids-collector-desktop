@@ -1,24 +1,24 @@
-# BIDS Collector Desktop - UI Template Integration
+# BIDS Collector Web Application - UI Template Integration
 
 ## Successfully Integrated Features
 
 ### 🎨 Modern UI Design
 - **Sidebar Navigation**: Sophisticated collapsible sidebar with menu system
 - **Professional Navbar**: Clean header with user menu and authentication
-- **Responsive Layout**: Works seamlessly in desktop Electron application
+- **Responsive Layout**: Works seamlessly across different screen sizes
 - **DaisyUI Theme**: Dark theme with consistent styling
 
 ### 🔧 Component Architecture
 - **Icon System**: Dual support for static SVGs and Iconify icons
 - **Menu Configuration**: Centralized menu management in `src/lib/menu.js`
-- **User Menu**: Professional dropdown with profile and logout options
 - **Sidebar MenuItem**: Recursive menu items with tooltips and state management
+- **Clean Navigation**: Simplified navigation focused on data management
 
-### 🔐 Authentication Integration
-- **Auth0 Integration**: Complete authentication flow preserved
-- **Token Management**: Automatic token injection for API requests
-- **User State**: Global user state management across components
-- **Protected Routes**: Route protection maintained for Electron app
+### � Local-First Features
+- **No Authentication**: Immediate access without login requirements
+- **Local Storage**: All data managed locally for privacy and speed
+- **Offline Support**: Full functionality without internet connection
+- **BIDS Compliance**: Proper Brain Imaging Data Structure organization
 
 ### 📁 File Structure
 ```
@@ -40,10 +40,10 @@ src/
     ├── +page.svelte             # Dashboard home page
     ├── job/
     │   └── +page.svelte         # Job management page
-    ├── login/
-    │   └── +page.svelte         # Authentication page
-    └── profile/
-        └── +page.svelte         # User profile page
+    ├── dataset/
+    │   └── +page.svelte         # Dataset management page
+    └── storage/
+        └── +page.svelte         # Storage management page
 ```
 
 ### 🚀 Key Features Implemented
@@ -60,73 +60,65 @@ src/
    - Icon-based navigation
    - Responsive design
 
-3. **User Authentication**
-   - Auth0 integration maintained
-   - User info logging on home page load
-   - Automatic token injection for API calls
-   - Logout functionality
+3. **BIDS Data Management**
+   - Dataset organization and validation
+   - Storage location management
+   - File integrity verification
+   - Local-first data processing
 
-4. **Electron Desktop Integration**
-   - All UI template features work in Electron
-   - Desktop-specific optimizations
-   - Native window controls
+4. **Web Application Integration**
+   - All UI template features work in modern browsers
+   - Web-optimized performance
+   - Responsive design patterns
    - Static build compatibility
 
 ### 🔄 Development Workflow
 
 #### Development Mode:
 ```bash
-# Web development (port 5174)
-npm run dev -- --port 5174
-
-# Electron development
-npm run electron:dev
+# Web development
+npm run dev
 ```
 
 #### Production Build:
 ```bash
 # Build web application
 npm run build
-
-# Build Electron desktop app
-npm run electron:build
 ```
 
 ### 📱 Current Pages
 
-1. **Dashboard (/)**: Modern hero section with user welcome
-2. **Profile (/profile)**: User information display (read-only)
-3. **Job Management (/job)**: Mock job management interface
-4. **Login (/login)**: Auth0 authentication page
+1. **Dashboard (/)**: Modern welcome page with navigation to key features
+2. **Datasets (/dataset)**: BIDS dataset management with validation and export tools
+3. **Storage (/storage)**: Storage location management and file monitoring
 
 ### 🛠️ Technical Details
 
-- **Framework**: SvelteKit with static adapter for Electron
+- **Framework**: SvelteKit with static adapter
 - **UI Library**: DaisyUI + Tailwind CSS
 - **Icons**: @iconify/svelte + static SVGs
-- **Authentication**: Auth0 SPA SDK
-- **Desktop**: Electron 37.2.4
-- **Build**: Vite + electron-builder
+- **Data Management**: Local-first BIDS compliance
+- **Build**: Vite
 
 ### ✅ Integration Status
 
 - ✅ Sidebar navigation system
-- ✅ Professional navbar with user menu
-- ✅ Auth0 authentication flow
+- ✅ Clean navbar without user elements
+- ✅ Local-first architecture
 - ✅ Icon system (static + iconify)
 - ✅ Menu configuration system
 - ✅ Layout responsiveness
-- ✅ Electron desktop compatibility
-- ✅ User state management
-- ✅ Token injection for APIs
-- ✅ Protected route handling
+- ✅ Web application compatibility
+- ✅ BIDS dataset management
+- ✅ Storage monitoring
+- ✅ Data-focused interface
 
 ### 🎯 Next Steps (Optional Enhancements)
 
-1. **Search Functionality**: Add the sophisticated search component
-2. **Loading Overlays**: Implement loading states for better UX
-3. **Additional Pages**: Expand the application with more features
-4. **API Integration**: Connect to real backend services
-5. **Error Handling**: Enhanced error boundaries and user feedback
+1. **BIDS Validation**: Integrate with bids-validator for real-time validation
+2. **Data Import**: Add support for importing various neuroimaging formats
+3. **Visualization**: Implement data preview and visualization components
+4. **Export Formats**: Support for various export formats beyond BIDS
+5. **Backup & Sync**: Optional cloud backup and synchronization features
 
-The UI template integration is now complete! The application maintains all Electron desktop functionality while providing a professional, modern user interface consistent with the svelte-ui-template design system.
+The UI template integration is now complete! The application provides a professional, modern user interface for local-first BIDS data management with no authentication requirements.

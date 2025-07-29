@@ -1,14 +1,17 @@
-# BIDS Collector Desktop
+# BIDS Collector
 
-A desktop application built with SvelteKit and Electron for managing and collecting BIDS data.
+A local-first web application for BIDS data collection and management.
 
 ## Features
 
-- 🖥️ Cross-platform desktop application (Windows, macOS, Linux)
-- 🚀 Built with SvelteKit for modern web development
-- 🔒 Auth0 integration for secure authentication
-- 🎨 Beautiful UI with Tailwind CSS and DaisyUI
-- 📦 Electron for native desktop experience
+- 🧠 **BIDS Compliance**: Proper Brain Imaging Data Structure organization
+- 📊 **Dataset Management**: Create, validate, and export BIDS datasets
+- 💾 **Storage Monitoring**: Track local, external, and network storage locations
+- 🌐 **Modern Web Interface**: Responsive design with clean UI
+- 🚀 **Built with SvelteKit**: Modern web development framework
+- 🎨 **Beautiful UI**: Tailwind CSS and DaisyUI components
+- 📦 **Static Generation**: Optimal performance and deployment
+- 💾 **Local-First**: Offline functionality without authentication barriers
 
 ## Development Setup
 
@@ -30,13 +33,10 @@ cd bids-collector-desktop
 npm install
 ```
 
-3. Set up environment variables:
-Copy `.env.example` to `.env` and fill in your Auth0 credentials:
+3. Set up environment variables (optional):
+Copy `.env.example` to `.env` and configure API settings if needed:
 ```
-VITE_AUTH0_DOMAIN=your-auth0-domain
-VITE_AUTH0_CLIENT_ID=your-auth0-client-id
 VITE_API_SERVER=http://localhost:8080
-VITE_PROTECTED_ROUTES=/job,/dataset
 ```
 
 ### Development
@@ -47,39 +47,37 @@ Run the SvelteKit development server:
 npm run dev
 ```
 
-#### Electron Development
-Run the application in Electron (with hot reload):
-```bash
-npm run electron:dev
-```
-
 #### Production Build
 Build the application for production:
 ```bash
 npm run build
 ```
 
-#### Electron Distribution
-Create distributable packages:
+#### Preview Production Build
+Preview the production build locally:
 ```bash
-npm run electron:dist
+npm run preview
 ```
 
 ## Project Structure
 
 ```
-bids-collector-desktop/
-├── electron/           # Electron main process
-│   ├── main.js        # Main Electron process
-│   └── assets/        # Electron assets
+bids-collector/
 ├── src/               # SvelteKit source code
-│   ├── routes/        # SvelteKit routes
-│   ├── lib/           # Shared libraries (Auth0, etc.)
-│   ├── component/     # Svelte components
+│   ├── routes/        # Application routes
+│   │   ├── dataset/   # Dataset management interface
+│   │   └── storage/   # Storage monitoring interface
+│   ├── lib/           # Shared utilities and configuration
+│   │   ├── menu.js    # Navigation menu configuration
+│   │   └── svgs/      # Static SVG icons
+│   ├── component/     # Reusable Svelte components
+│   │   ├── icon/      # Icon component system
+│   │   ├── Navbar.svelte     # Application header
+│   │   ├── Sidebar.svelte    # Navigation sidebar
+│   │   └── SidebarMenuItem.svelte  # Menu item component
 │   └── app.html       # HTML template
-├── static/            # Static assets
-├── build/             # Built SvelteKit app
-└── dist-electron/     # Electron distribution files
+├── static/            # Static assets (favicon, etc.)
+└── build/             # Built application output
 ```
 
 ## Scripts
@@ -87,30 +85,18 @@ bids-collector-desktop/
 - `npm run dev` - Start SvelteKit development server
 - `npm run build` - Build SvelteKit for production
 - `npm run preview` - Preview production build
-- `npm run electron` - Run Electron with built app
-- `npm run electron:dev` - Run Electron in development mode
-- `npm run electron:build` - Build Electron app
-- `npm run electron:dist` - Create distribution packages
 
-## Authentication
+## Local-First Architecture
 
-The application uses Auth0 for authentication. Make sure to:
+This application is designed as a focused data management tool:
 
-1. Set up an Auth0 application
-2. Configure the callback URLs in Auth0 dashboard
-3. Update the environment variables with your Auth0 credentials
+- **No User Accounts**: Direct access to functionality without signup/login
+- **Local Data Processing**: All operations performed locally for privacy and speed
+- **Offline Capable**: Full functionality without internet connection
+- **BIDS Focused**: Purpose-built for Brain Imaging Data Structure compliance
+- **Clean Interface**: Simplified UI focused on data management tasks
 
 ## Troubleshooting
-
-### Electron Library Issues
-If you encounter library issues with Electron, try:
-
-1. Install system dependencies (Ubuntu/Debian):
-```bash
-sudo apt-get install libnspr4 libnss3 libxss1 libgconf-2-4 libxrandr2 libasound2 libpangocairo-1.0-0 libgtk-3-0
-```
-
-2. For other systems, refer to the Electron documentation.
 
 ### Build Issues
 - Ensure all dependencies are installed

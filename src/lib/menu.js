@@ -7,17 +7,17 @@ let menus = [
         enabled: true 
     },
     { 
-        name: "profile", 
-        link: "/profile", 
-        alias: "Profile", 
-        icon: "profile", 
+        name: "dataset", 
+        link: "/dataset", 
+        alias: "Datasets", 
+        icon: "heroicons:folder-open", 
         enabled: true 
     },
     { 
-        name: "job", 
-        link: "/job", 
-        alias: "Job Management", 
-        icon: "heroicons:briefcase", 
+        name: "storage", 
+        link: "/storage", 
+        alias: "Storage", 
+        icon: "heroicons:server", 
         enabled: true 
     }
 ];

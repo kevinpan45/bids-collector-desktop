@@ -1,20 +1,15 @@
 <script>
   import { onMount } from 'svelte';
-  import { user, isAuthenticated } from '$lib/auth.js';
   
   let mounted = false;
   onMount(() => {
     mounted = true;
-    
-    // Console log the current logged user info when load home page
-    if (user) {
-      console.log('Current logged user info:', user);
-    }
+    console.log('BIDS Collector started in local-first mode');
   });
 </script>
 
 <svelte:head>
-  <title>BIDS Collector Desktop</title>
+  <title>BIDS Collector</title>
 </svelte:head>
 
 {#if mounted}
@@ -26,23 +21,21 @@
         class="max-w-sm rounded-lg shadow-2xl w-64 h-64"
       />
       <div>
-        <h1 class="text-5xl font-bold">BIDS Collector Desktop</h1>
+        <h1 class="text-5xl font-bold">BIDS Collector</h1>
         <p class="py-6">
-          A modern desktop application for BIDS data collection and management. 
+          A modern local-first application for BIDS data collection and management. 
           Built with <a href="https://svelte.dev" target="_blank" class="link">Svelte</a> 
-          and <a href="https://daisyui.com" target="_blank" class="link">DaisyUI</a>, 
-          with authentication powered by <a href="https://auth0.com" target="_blank" class="link">Auth0</a>.
+          and <a href="https://daisyui.com" target="_blank" class="link">DaisyUI</a> 
+          for a seamless offline experience.
         </p>
         
-        {#if isAuthenticated && user}
-          <div class="alert alert-success mb-4">
-            <span>Welcome back, {user.name || user.email}!</span>
-          </div>
-        {/if}
+        <div class="alert alert-info mb-4">
+          <span>Welcome to your local BIDS workspace!</span>
+        </div>
         
         <div class="flex gap-4">
-          <a href="/job" class="btn btn-primary">Manage Jobs</a>
-          <a href="/profile" class="btn btn-secondary">View Profile</a>
+          <a href="/dataset" class="btn btn-primary">Manage Datasets</a>
+          <a href="/storage" class="btn btn-secondary">Storage</a>
         </div>
       </div>
     </div>

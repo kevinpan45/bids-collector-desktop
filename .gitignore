@@ -141,16 +141,6 @@ build/
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
-# Electron build output
-dist-electron/
-
-# Electron cache
-.electron/
-
-# Code signing certificates (for macOS/Windows builds)
-*.p12
-*.pfx
-
 # OS generated files
 .DS_Store
 .DS_Store?

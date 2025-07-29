@@ -1,14 +1,8 @@
 <script>
-  import UserIcon from "$component/UserMenu.svelte";
-  
-  export let showSearch = false; // Disabled for Electron app initially
-  export let username = "";
+  export let showSearch = false;
   export let scrollY;
   
   $: switchNavbarStyle = scrollY > 40 ? true : false;
-
-  export let login = () => {};
-  export let handleLogout = () => {};
 </script>
 
 <svelte:window bind:scrollY />
@@ -28,14 +22,11 @@
         </div>
       {/if}
     </div>
-    {#if username}
-      <div class="flex-0">
-        <UserIcon bind:username logout={handleLogout} />
+    
+    <div class="flex-0">
+      <div class="text-sm font-medium text-base-content/70">
+        BIDS Collector
       </div>
-    {:else}
-      <div class="flex-0">
-        <button class="btn btn-ghost" on:click={login}>Login</button>
-      </div>
-    {/if}
+    </div>
   </nav>
 </div>

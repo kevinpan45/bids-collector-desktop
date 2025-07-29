@@ -7,55 +7,16 @@
   import { onMount } from "svelte";
   import { Toaster } from "svelte-french-toast";
   import "../app.css";
-
-  import { checkAuth, createClient, getIdToken, handleRedirectCallback, isAuthenticated, loginWithRedirect, logout, user } from '$lib/auth.js';
   
-  let username;
   let layoutMounted = false;
   let collapsed = false;
 
-  axios.defaults.baseURL = import.meta.env.VITE_API_SERVER;
-
-  axios.interceptors.request.use(
-    async function (config) {
-      if(user) {
-        const accessToken = await getIdToken();
-        if(accessToken) {
-          config.headers["Authorization"] = "Bearer " + accessToken;
-        }
-      }
-      return config;
-    },
-    function (error) {
-      console.log(error);
-      return Promise.reject(error);
-    }
-  );
-
-  async function login() {
-    await loginWithRedirect();
-  }
-
-  async function handleLogout() {
-    await logout();
-  }
+  axios.defaults.baseURL = import.meta.env.VITE_API_SERVER || 'http://localhost:8080';
 
   onMount(async () => {
-    await createClient();
-    // Handle Auth0 redirect callback if code and state are in URL
-    const params = new URLSearchParams(window.location.search);
-    if (params.has('code') && params.has('state')) {
-      await handleRedirectCallback();
-      // Remove code and state from URL
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
-    await checkAuth();
     layoutMounted = true;
     collapsed = sessionStorage.getItem("sidebar-collapsed") === "true";
-    if (user) {
-      username = user.name || user.email;
-      console.log('Current logged user info:', user);
-    }
+    console.log('BIDS Collector started in local-first mode');
   });
 
   $: innerWidth = undefined;
@@ -64,20 +25,6 @@
     sessionStorage.setItem("sidebar-collapsed", !collapsed);
     collapsed = !collapsed;
   };
-
-  // Load protected routes from environment variable
-  const protectedRoutes =
-    import.meta.env.VITE_PROTECTED_ROUTES?.split(",") || [];
-
-  $: {
-    if (
-      typeof window !== "undefined" &&
-      protectedRoutes.includes($page.url.pathname) &&
-      !isAuthenticated
-    ) {
-      window.location.href = "/login";
-    }
-  }
 </script>
 
 <svelte:window bind:innerWidth />
@@ -88,7 +35,7 @@
   <div class="bg-base-100 drawer lg:drawer-open h-full overflow-hidden">
     <div class={`${collapsed ? "ml-20" : ""} drawer-content overflow-auto`}>
       {#if layoutMounted}
-        <Navbar {username} {login} {handleLogout} showSearch={false} />
+        <Navbar showSearch={false} />
       {/if}
 
       <div class={"max-w-[100vw] px-6 pb-16 xl:pr-2"}>
