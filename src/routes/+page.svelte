@@ -23,10 +23,7 @@
       <div>
         <h1 class="text-5xl font-bold">BIDS Collector</h1>
         <p class="py-6">
-          A modern local-first application for BIDS data collection and management. 
-          Built with <a href="https://svelte.dev" target="_blank" class="link">Svelte</a> 
-          and <a href="https://daisyui.com" target="_blank" class="link">DaisyUI</a> 
-          for a seamless offline experience.
+          Collecting datasets from Brain Imaging Data Structure (BIDS) ecosystem to your local machine or trusted s3 storage service, designed for local-first data management.
         </p>
         
         <div class="alert alert-info mb-4">
