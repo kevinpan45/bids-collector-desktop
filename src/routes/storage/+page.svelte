@@ -1,5 +1,6 @@
 <script>
   import { onMount } from 'svelte';
+  import { saveConfig, loadConfig } from '$lib/storage.js';
   
   // Tauri APIs
   let tauriOpen = null;
@@ -16,6 +17,8 @@
   
   // Modal state
   let showAddLocationModal = false;
+  let showEditLocationModal = false;
+  let editingLocationId = null;
   let addLocationForm = {
     type: 'local', // 'local' or 's3'
     name: '',
@@ -76,6 +79,12 @@
       console.warn('Tauri APIs not available, using web fallbacks:', error);
     }
     
+    // Load stored configuration
+    await loadStorageConfig();
+    
+    // Update config path
+    await updateConfigPath();
+    
     console.log('Storage management page loaded');
     // Show notification to add storage location if none exist
     if (storageLocations.length === 0) {
@@ -95,6 +104,54 @@
     notification.show = false;
   }
   
+  // Storage configuration persistence
+  async function loadStorageConfig() {
+    try {
+      const defaultConfig = {
+        storageLocations: [],
+        nextLocationId: 1,
+        storageData: {
+          total: '10 GB',
+          used: '4.85 GB',
+          available: '5.15 GB',
+          usedPercentage: 48.5
+        }
+      };
+      
+      const config = await loadConfig('storage', defaultConfig);
+      
+      storageLocations = config.storageLocations || [];
+      nextLocationId = config.nextLocationId || 1;
+      storageData = config.storageData || defaultConfig.storageData;
+      
+      console.log(`Loaded ${storageLocations.length} storage locations from persistent config`);
+    } catch (error) {
+      console.error('Failed to load storage config:', error);
+      showNotification('warning', 'Failed to load saved storage configuration. Using defaults.');
+    }
+  }
+  
+  async function saveStorageConfig() {
+    try {
+      const config = {
+        storageLocations,
+        nextLocationId,
+        storageData,
+        lastUpdated: new Date().toISOString()
+      };
+      
+      const success = await saveConfig('storage', config);
+      if (success) {
+        console.log('Storage configuration saved successfully');
+      } else {
+        throw new Error('Save operation returned false');
+      }
+    } catch (error) {
+      console.error('Failed to save storage config:', error);
+      showNotification('warning', 'Failed to save storage configuration to disk.');
+    }
+  }
+  
   // Check if local storage already exists
   function hasLocalStorage() {
     return storageLocations.some(location => location.type === 'local');
@@ -108,7 +165,9 @@
     }
     
     if (addLocationForm.type === 'local') {
-      if (hasLocalStorage()) {
+      // Check if local storage already exists (but allow editing current local storage)
+      const existingLocal = storageLocations.find(loc => loc.type === 'local');
+      if (existingLocal && (!editingLocationId || existingLocal.id !== editingLocationId)) {
         showNotification('error', 'Only one local machine storage location is allowed.');
         return false;
       }
@@ -146,10 +205,11 @@
       secretAccessKey: '',
       endpoint: ''
     };
+    editingLocationId = null;
   }
   
   // Handle adding new storage location
-  function handleAddStorageSubmit() {
+  async function handleAddStorageSubmit() {
     if (!validateForm()) return;
     
     const newLocation = {
@@ -157,7 +217,8 @@
       name: addLocationForm.name,
       type: addLocationForm.type,
       datasets: 0,
-      status: 'active'
+      status: 'active',
+      createdAt: new Date().toISOString()
     };
     
     if (addLocationForm.type === 'local') {
@@ -175,14 +236,63 @@
     showAddLocationModal = false;
     resetForm();
     
+    // Save configuration to disk
+    await saveStorageConfig();
+    
     showNotification('success', `${addLocationForm.type === 'local' ? 'Local' : 'S3'} storage location "${newLocation.name}" added successfully.`);
   }
   
+  // Handle editing existing storage location
+  async function handleEditStorageSubmit() {
+    if (!validateForm()) return;
+    
+    const locationIndex = storageLocations.findIndex(loc => loc.id === editingLocationId);
+    if (locationIndex === -1) return;
+    
+    const updatedLocation = {
+      ...storageLocations[locationIndex],
+      name: addLocationForm.name,
+      type: addLocationForm.type,
+      updatedAt: new Date().toISOString()
+    };
+    
+    if (addLocationForm.type === 'local') {
+      updatedLocation.path = addLocationForm.path;
+      // Remove S3 specific fields if switching from S3 to local
+      delete updatedLocation.bucketName;
+      delete updatedLocation.region;
+      delete updatedLocation.accessKeyId;
+      delete updatedLocation.secretAccessKey;
+      delete updatedLocation.endpoint;
+    } else if (addLocationForm.type === 's3') {
+      updatedLocation.path = `s3://${addLocationForm.bucketName}`;
+      updatedLocation.bucketName = addLocationForm.bucketName;
+      updatedLocation.region = addLocationForm.region;
+      updatedLocation.accessKeyId = addLocationForm.accessKeyId;
+      updatedLocation.secretAccessKey = addLocationForm.secretAccessKey;
+      updatedLocation.endpoint = addLocationForm.endpoint;
+    }
+    
+    storageLocations[locationIndex] = updatedLocation;
+    storageLocations = [...storageLocations]; // Trigger reactivity
+    showEditLocationModal = false;
+    resetForm();
+    
+    // Save configuration to disk
+    await saveStorageConfig();
+    
+    showNotification('success', `Storage location "${updatedLocation.name}" updated successfully.`);
+  }
+  
   // Handle removing storage location
-  function handleRemoveLocation(locationId) {
+  async function handleRemoveLocation(locationId) {
     const locationToRemove = storageLocations.find(loc => loc.id === locationId);
     if (locationToRemove) {
       storageLocations = storageLocations.filter(loc => loc.id !== locationId);
+      
+      // Save configuration to disk
+      await saveStorageConfig();
+      
       showNotification('success', `Storage location "${locationToRemove.name}" removed successfully.`);
       
       // Show add location notification if no locations remain
@@ -191,6 +301,28 @@
           showNotification('info', 'No storage locations configured. Please add a storage location to get started.');
         }, 1000);
       }
+    }
+  }
+  
+  // Handle configuring existing storage location
+  function handleConfigureLocation(locationId) {
+    const locationToEdit = storageLocations.find(loc => loc.id === locationId);
+    if (locationToEdit) {
+      editingLocationId = locationId;
+      
+      // Populate form with existing data
+      addLocationForm = {
+        type: locationToEdit.type,
+        name: locationToEdit.name,
+        path: locationToEdit.path || '',
+        bucketName: locationToEdit.bucketName || '',
+        region: locationToEdit.region || 'us-east-1',
+        accessKeyId: locationToEdit.accessKeyId || '',
+        secretAccessKey: locationToEdit.secretAccessKey || '',
+        endpoint: locationToEdit.endpoint || ''
+      };
+      
+      showEditLocationModal = true;
     }
   }
   
@@ -267,6 +399,17 @@
   
   function formatFileSize(size) {
     return size;
+  }
+  
+  // Show config path
+  let configPath = '';
+  async function updateConfigPath() {
+    try {
+      const { getConfigPath } = await import('$lib/storage.js');
+      configPath = await getConfigPath();
+    } catch (error) {
+      configPath = 'Configuration path unavailable';
+    }
   }
 </script>
 
@@ -367,6 +510,19 @@
     </div>
   </div>
   
+  <!-- Configuration Info -->
+  <div class="alert alert-info mb-8">
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-current shrink-0 w-6 h-6">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+    </svg>
+    <div>
+      <h3 class="font-bold">Configuration Storage</h3>
+      <div class="text-sm">
+        Storage locations are automatically saved to: <code class="bg-base-200 px-1 rounded">{configPath}</code>
+      </div>
+    </div>
+  </div>
+  
   <!-- Storage Locations -->
   <div class="card bg-base-100 shadow-xl mb-8">
     <div class="card-body">
@@ -429,8 +585,7 @@
                   </td>
                   <td>
                     <div class="flex gap-1">
-                      <button class="btn btn-ghost btn-xs">Configure</button>
-                      <button class="btn btn-ghost btn-xs">Browse</button>
+                      <button class="btn btn-ghost btn-xs" on:click={() => handleConfigureLocation(location.id)}>Configure</button>
                       <button class="btn btn-ghost btn-xs text-error" on:click={() => handleRemoveLocation(location.id)}>Remove</button>
                     </div>
                   </td>
@@ -612,6 +767,144 @@
           <button class="btn btn-ghost" on:click={() => { showAddLocationModal = false; resetForm(); }}>Cancel</button>
           <button class="btn btn-primary" on:click={handleAddStorageSubmit} disabled={addLocationForm.type === 'local' && hasLocalStorage()}>
             Add Storage Location
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
+  
+  <!-- Edit Storage Location Modal -->
+  {#if showEditLocationModal}
+    <div class="modal modal-open">
+      <div class="modal-box max-w-2xl">
+        <h3 class="font-bold text-lg mb-4">Configure Storage Location</h3>
+        
+        <!-- Storage Type Selection -->
+        <div class="form-control mb-4">
+          <label class="label">
+            <span class="label-text">Storage Type</span>
+          </label>
+          <div class="flex gap-4">
+            <label class="label cursor-pointer">
+              <input type="radio" bind:group={addLocationForm.type} value="local" class="radio radio-primary" />
+              <span class="label-text ml-2">Local Machine</span>
+            </label>
+            <label class="label cursor-pointer">
+              <input type="radio" bind:group={addLocationForm.type} value="s3" class="radio radio-primary" />
+              <span class="label-text ml-2">S3 Service</span>
+            </label>
+          </div>
+          {#if addLocationForm.type === 'local' && hasLocalStorage() && editingLocationId !== storageLocations.find(loc => loc.type === 'local')?.id}
+            <label class="label">
+              <span class="label-text-alt text-warning">Warning: Only one local machine storage location is allowed.</span>
+            </label>
+          {/if}
+        </div>
+        
+        <!-- Common Fields -->
+        <div class="form-control mb-4">
+          <label class="label" for="edit-storage-name">
+            <span class="label-text">Name</span>
+          </label>
+          <input type="text" id="edit-storage-name" bind:value={addLocationForm.name} placeholder="Enter a name for this storage location" class="input input-bordered" />
+        </div>
+        
+        {#if addLocationForm.type === 'local'}
+          <!-- Local Storage Fields -->
+          <div class="form-control mb-4">
+            <label class="label" for="edit-local-path">
+              <span class="label-text">Local Path</span>
+            </label>
+            <div class="join">
+              <input 
+                type="text" 
+                id="edit-local-path" 
+                bind:value={addLocationForm.path} 
+                placeholder="/path/to/your/bids/data" 
+                class="input input-bordered join-item flex-1" 
+              />
+              <button 
+                type="button"
+                class="btn btn-outline join-item" 
+                on:click={handleBrowseDirectory}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-5l-2-2H6a2 2 0 00-2 2z" />
+                </svg>
+                Browse
+              </button>
+            </div>
+            <div class="label">
+              <span class="label-text-alt">
+                Click Browse to select your directory, or enter the full path manually
+              </span>
+            </div>
+          </div>
+        {:else if addLocationForm.type === 's3'}
+          <!-- S3 Storage Fields -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div class="form-control">
+              <label class="label" for="edit-bucket-name">
+                <span class="label-text">Bucket Name</span>
+              </label>
+              <input type="text" id="edit-bucket-name" bind:value={addLocationForm.bucketName} placeholder="my-bids-bucket" class="input input-bordered" />
+            </div>
+            <div class="form-control">
+              <label class="label" for="edit-region">
+                <span class="label-text">Region</span>
+              </label>
+              <select id="edit-region" bind:value={addLocationForm.region} class="select select-bordered">
+                <option value="us-east-1">US East (N. Virginia)</option>
+                <option value="us-east-2">US East (Ohio)</option>
+                <option value="us-west-1">US West (N. California)</option>
+                <option value="us-west-2">US West (Oregon)</option>
+                <option value="eu-west-1">Europe (Ireland)</option>
+                <option value="eu-west-2">Europe (London)</option>
+                <option value="eu-central-1">Europe (Frankfurt)</option>
+                <option value="ap-southeast-1">Asia Pacific (Singapore)</option>
+                <option value="ap-southeast-2">Asia Pacific (Sydney)</option>
+                <option value="ap-northeast-1">Asia Pacific (Tokyo)</option>
+              </select>
+            </div>
+          </div>
+          
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div class="form-control">
+              <label class="label" for="edit-access-key">
+                <span class="label-text">Access Key ID</span>
+              </label>
+              <input type="text" id="edit-access-key" bind:value={addLocationForm.accessKeyId} placeholder="AKIAIOSFODNN7EXAMPLE" class="input input-bordered" />
+            </div>
+            <div class="form-control">
+              <label class="label" for="edit-secret-key">
+                <span class="label-text">Secret Access Key</span>
+              </label>
+              <input type="password" id="edit-secret-key" bind:value={addLocationForm.secretAccessKey} placeholder="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY" class="input input-bordered" />
+            </div>
+          </div>
+          
+          <div class="form-control mb-4">
+            <label class="label" for="edit-endpoint">
+              <span class="label-text">Custom Endpoint (Optional)</span>
+            </label>
+            <input type="text" id="edit-endpoint" bind:value={addLocationForm.endpoint} placeholder="https://s3.amazonaws.com" class="input input-bordered" />
+            <label class="label">
+              <span class="label-text-alt">Leave empty to use default AWS S3 endpoint</span>
+            </label>
+          </div>
+          
+          <div class="alert alert-info mb-4">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-current shrink-0 w-6 h-6">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            <span>Make sure your AWS credentials have the necessary permissions to read and write to the specified bucket.</span>
+          </div>
+        {/if}
+        
+        <div class="modal-action">
+          <button class="btn btn-ghost" on:click={() => { showEditLocationModal = false; resetForm(); }}>Cancel</button>
+          <button class="btn btn-primary" on:click={handleEditStorageSubmit}>
+            Update Storage Location
           </button>
         </div>
       </div>

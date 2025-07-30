@@ -1,5 +1,4 @@
 <script>
-  import { page } from "$app/stores";
   import Icon from "$component/icon/Icon.svelte";
   import Navbar from "$component/Navbar.svelte";
   import Sidebar from "$component/Sidebar.svelte";
