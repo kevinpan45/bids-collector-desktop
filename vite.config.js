@@ -13,6 +13,6 @@ export default defineConfig({
     outDir: 'build'
   },
   optimizeDeps: {
-    exclude: ['@tauri-apps/api', '@tauri-apps/plugin-dialog']
+    exclude: ['@tauri-apps/api', '@tauri-apps/plugin-dialog', 'opendal']
   }
 });
