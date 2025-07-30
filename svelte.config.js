@@ -20,6 +20,10 @@ const config = {
       $component: "src/component",
       $lib: "src/lib",
     }
+  },
+
+  vitePlugin: {
+    inspector: false
   }
 };
 

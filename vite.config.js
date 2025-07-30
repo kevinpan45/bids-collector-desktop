@@ -11,5 +11,8 @@ export default defineConfig({
   base: './',
   build: {
     outDir: 'build'
+  },
+  optimizeDeps: {
+    exclude: ['@tauri-apps/api', '@tauri-apps/plugin-dialog']
   }
 });
