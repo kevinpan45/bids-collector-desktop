@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import axios from 'axios';
+  import toast from 'svelte-french-toast';
   
   let datasets = [];
   let loading = true;
@@ -10,8 +11,6 @@
   let totalPages = 1;
   let totalRecords = 0;
   
-  let searchTerm = '';
-  let selectedFilter = 'all';
   let viewMode = 'list'; // 'grid' or 'list'
   
   $: filteredDatasets = datasets;
@@ -38,12 +37,8 @@
         provider: dataset.provider || 'OpenNeuro',
         participants: dataset.participants || 'N/A', // Use participants field from API response
         subjects: dataset.subjects || 0,
-        sessions: dataset.sessions || 0, // API doesn't provide session count
         size: formatFileSize(dataset.size) || 'Unknown', // Convert size to human-readable format
         created: dataset.createdAt ? new Date(dataset.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-        status: dataset.deleted ? 'deleted' : 'available',
-        datatype: 'Mixed', // API doesn't specify datatype
-        tags: [], // API doesn't provide tags
         version: dataset.version || '1.0.0',
         doi: dataset.doi,
         storagePath: dataset.storagePath
@@ -52,57 +47,10 @@
     } catch (err) {
       console.error('Error fetching datasets:', err);
       error = err.response?.data?.message || err.message || 'Failed to fetch datasets';
-      // Fallback to sample data if API fails
-      datasets = [
-        { 
-          id: 1, 
-          name: 'fMRI Motor Task Study',
-          description: 'Functional MRI data collected during motor task paradigm with 25 healthy participants',
-          modalities: ['func', 'anat'],
-          provider: 'OpenNeuro',
-          participants: 25,
-          subjects: 25, 
-          sessions: 50,
-          size: '2.3 GB',
-          created: '2025-01-15',
-          status: 'active',
-          datatype: 'fMRI',
-          tags: ['motor', 'task', 'healthy'],
-          version: '1.0.0'
-        },
-        { 
-          id: 2, 
-          name: 'EEG Resting State',
-          description: 'High-density EEG recordings during resting state conditions',
-          modalities: ['eeg'],
-          provider: 'OpenNeuro',
-          participants: 12,
-          subjects: 12, 
-          sessions: 24,
-          size: '850 MB',
-          created: '2025-01-10',
-          status: 'completed',
-          datatype: 'EEG',
-          tags: ['resting-state', 'eeg', 'connectivity'],
-          version: '1.2.1'
-        },
-        { 
-          id: 3, 
-          name: 'DTI Connectivity Study',
-          description: 'Diffusion tensor imaging for white matter connectivity analysis',
-          modalities: ['dwi', 'anat'],
-          provider: 'OpenNeuro',
-          participants: 8,
-          subjects: 8, 
-          sessions: 16,
-          size: '1.7 GB',
-          created: '2025-01-20',
-          status: 'in-progress',
-          datatype: 'DTI',
-          tags: ['diffusion', 'connectivity', 'white-matter'],
-          version: '0.8.0'
-        }
-      ];
+      toast.error(`Failed to load datasets: ${error}`, {
+        duration: 4000,
+        position: 'top-right'
+      });
     } finally {
       loading = false;
     }
@@ -112,15 +60,6 @@
     console.log('Dataset management page loaded');
     fetchDatasets();
   });
-  
-  function getStatusBadge(status) {
-    switch(status) {
-      case 'active': return 'badge-success';
-      case 'completed': return 'badge-info';
-      case 'in-progress': return 'badge-warning';
-      default: return 'badge-neutral';
-    }
-  }
   
   function getModalityIcon(modality) {
     switch(modality) {
@@ -270,9 +209,6 @@
               <div class="flex justify-between items-start mb-4">
                 <div class="flex-1">
                   <h3 class="card-title text-lg mb-2">{dataset.name}</h3>
-                  <span class="badge {getStatusBadge(dataset.status)} badge-sm mb-2">
-                    {dataset.status}
-                  </span>
                   <div class="text-sm text-base-content/60">v{dataset.version}</div>
                 </div>
                 <div class="dropdown dropdown-end">
@@ -295,8 +231,9 @@
               <!-- Description -->
               <p class="text-sm text-base-content/80 mb-4 line-clamp-3">{dataset.description}</p>
               
-              <!-- Modalities -->
-              <div class="flex flex-wrap gap-2 mb-4">
+              <!-- Provider and Modalities -->
+              <div class="flex flex-wrap gap-2 mb-4 items-center">
+                <span class="badge badge-ghost badge-sm">📍 {dataset.provider}</span>
                 {#each dataset.modalities as modality}
                   <span class="badge badge-outline badge-sm">
                     {getModalityIcon(modality)} {modality.toUpperCase()}
@@ -304,31 +241,12 @@
                 {/each}
               </div>
               
-              <!-- Provider -->
-              <div class="mb-4">
-                <span class="badge badge-ghost badge-sm">📍 {dataset.provider}</span>
-              </div>
-              
               <!-- Stats -->
-              <div class="grid grid-cols-2 gap-4 mb-4">
+              <div class="grid grid-cols-1 gap-4 mb-4">
                 <div class="text-center">
                   <div class="text-lg font-bold text-primary">{dataset.participants}</div>
                   <div class="text-xs text-base-content/60">Participants</div>
                 </div>
-                <div class="text-center">
-                  <div class="text-lg font-bold text-secondary">{dataset.sessions}</div>
-                  <div class="text-xs text-base-content/60">Sessions</div>
-                </div>
-              </div>
-              
-              <!-- Tags -->
-              <div class="flex flex-wrap gap-1 mb-4">
-                {#each dataset.tags.slice(0, 3) as tag}
-                  <span class="badge badge-ghost badge-xs">#{tag}</span>
-                {/each}
-                {#if dataset.tags.length > 3}
-                  <span class="badge badge-ghost badge-xs">+{dataset.tags.length - 3}</span>
-                {/if}
               </div>
               
               <!-- Footer -->
