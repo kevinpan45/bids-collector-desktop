@@ -12,6 +12,7 @@
   let totalRecords = 0;
   
   let viewMode = 'list'; // 'grid' or 'list'
+  let selectedProvider = 'All'; // 'All', 'OpenNeuro', 'CCNDC'
   
   $: filteredDatasets = datasets;
   
@@ -20,7 +21,13 @@
       loading = true;
       error = null;
       
-      const response = await axios.get(`/api/openneuro/bids?page=${page}&size=${size}`);
+      // Build API URL with provider filter
+      let apiUrl = `/api/openneuro/bids?page=${page}&size=${size}`;
+      if (selectedProvider !== 'All') {
+        apiUrl += `&provider=${selectedProvider}`;
+      }
+      
+      const response = await axios.get(apiUrl);
       
       const data = response.data;
       
@@ -35,7 +42,7 @@
         description: dataset.description || `Dataset DOI: ${dataset.doi}` || 'No description available',
         modalities: ['unknown'], // API doesn't provide modalities, could be enhanced later
         provider: dataset.provider || 'OpenNeuro',
-        participants: dataset.participants || 'N/A', // Use participants field from API response
+        participants: dataset.participants === -1 ? 'Unknown' : (dataset.participants || 'N/A'), // Use participants field from API response
         subjects: dataset.subjects || 0,
         size: formatFileSize(dataset.size) || 'Unknown', // Convert size to human-readable format
         created: dataset.createdAt ? new Date(dataset.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
@@ -145,12 +152,24 @@
             List
           </button>
         </div>
-        <!-- Dataset Count Info -->
-        <div class="text-sm text-base-content/60 flex items-center ml-4">
-          Showing {datasets.length} of {totalRecords} datasets
+        <!-- Provider Filter -->
+        <div class="form-control">
+          <select 
+            class="select select-sm select-bordered w-40" 
+            bind:value={selectedProvider}
+            on:change={() => { page = 1; fetchDatasets(); }}
+          >
+            <option value="All">All Providers</option>
+            <option value="OpenNeuro">OpenNeuro</option>
+            <option value="CCNDC">CCNDC</option>
+          </select>
         </div>
       </div>
-      <div class="flex gap-2">
+      <div class="flex gap-2 items-center">
+        <!-- Dataset Count Info -->
+        <div class="text-sm text-base-content/60">
+          Showing {datasets.length} of {totalRecords} datasets
+        </div>
         <!-- Pagination Controls -->
         <div class="join">
           <button 
@@ -371,30 +390,7 @@
     transform: translateY(-2px);
   }
   
-  .stats {
-    background: linear-gradient(135deg, hsl(var(--b1)) 0%, hsl(var(--b2)) 100%);
-  }
-  
   .badge-outline {
     border-width: 1px;
-  }
-  
-  /* Custom scrollbar for horizontal scroll */
-  .overflow-x-auto::-webkit-scrollbar {
-    height: 8px;
-  }
-  
-  .overflow-x-auto::-webkit-scrollbar-track {
-    background: hsl(var(--b2));
-    border-radius: 4px;
-  }
-  
-  .overflow-x-auto::-webkit-scrollbar-thumb {
-    background: hsl(var(--bc) / 0.3);
-    border-radius: 4px;
-  }
-  
-  .overflow-x-auto::-webkit-scrollbar-thumb:hover {
-    background: hsl(var(--bc) / 0.5);
   }
 </style>
