@@ -275,9 +275,25 @@ describe('OpenNeuro Dataset ds006486 Tests', () => {
 
   describe('Efficient Dataset Operations', () => {
     it('should implement smart dataset browsing strategy', async () => {
-      // Mock implementation of efficient browsing strategy
+      // Mock implementation with proper AWS SDK v3 client wrapper structure
       const mockClient = {
-        list: vi.fn()
+        send: vi.fn().mockResolvedValue({
+          Contents: [
+            { Key: 'dataset_description.json', Size: 500 },
+            { Key: 'participants.tsv', Size: 200 }
+          ],
+          CommonPrefixes: [
+            { Prefix: 'sub-01/' },
+            { Prefix: 'sub-02/' },
+            { Prefix: 'derivatives/' }
+          ]
+        })
+      };
+
+      const mockClientWrapper = {
+        client: mockClient,
+        bucket: 'openneuro-bucket',
+        region: 'us-east-1'
       };
 
       // Strategy 1: Get overview without downloading large files
@@ -301,27 +317,31 @@ describe('OpenNeuro Dataset ds006486 Tests', () => {
         };
       };
 
-      // Mock the listing
-      mockClient.list.mockResolvedValue([
-        { name: 'dataset_description.json', path: '/dataset_description.json', metadata: { mode: 'file' }},
-        { name: 'participants.tsv', path: '/participants.tsv', metadata: { mode: 'file' }},
-        { name: 'sub-01', path: '/sub-01/', metadata: { mode: 'dir' }},
-        { name: 'sub-02', path: '/sub-02/', metadata: { mode: 'dir' }},
-        { name: 'sub-03', path: '/sub-03/', metadata: { mode: 'dir' }},
-        { name: 'derivatives', path: '/derivatives/', metadata: { mode: 'dir' }}
-      ]);
+      const overview = await getDatasetOverview(mockClientWrapper);
 
-      const overview = await getDatasetOverview(mockClient);
-
-      expect(overview.subjects).toEqual(['sub-01', 'sub-02', 'sub-03']);
+      expect(overview.subjects).toEqual(['sub-01', 'sub-02']);
       expect(overview.otherDirectories).toEqual(['derivatives']);
       expect(overview.metadataFiles.length).toBe(2);
-      expect(overview.estimatedSubjects).toBe(3);
+      expect(overview.estimatedSubjects).toBe(2);
     });
 
     it('should implement progressive subject exploration', async () => {
       const mockClient = {
-        list: vi.fn()
+        send: vi.fn().mockResolvedValue({
+          Contents: [
+            { Key: 'sub-01/sub-01_sessions.tsv', Size: 300 }
+          ],
+          CommonPrefixes: [
+            { Prefix: 'sub-01/anat/' },
+            { Prefix: 'sub-01/func/' }
+          ]
+        })
+      };
+
+      const mockClientWrapper = {
+        client: mockClient,
+        bucket: 'openneuro-bucket',
+        region: 'us-east-1'
       };
 
       // Strategy 2: Explore one subject to understand structure
@@ -352,13 +372,7 @@ describe('OpenNeuro Dataset ds006486 Tests', () => {
         };
       };
 
-      // Mock subject contents
-      mockClient.list.mockResolvedValue([
-        { name: 'anat', path: '/sub-01/anat/', metadata: { mode: 'dir' }},
-        { name: 'func', path: '/sub-01/func/', metadata: { mode: 'dir' }}
-      ]);
-
-      const structure = await exploreSubjectStructure(mockClient, 'sub-01');
+      const structure = await exploreSubjectStructure(mockClientWrapper, 'sub-01');
 
       expect(structure.subject).toBe('sub-01');
       expect(structure.modalities).toEqual(['anat', 'func']);

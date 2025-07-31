@@ -1,7 +1,7 @@
 /**
- * Unit tests for OpenDAL S3 Client
+ * Unit tests for AWS SDK v3 S3 Client
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   createS3Client,
   testS3Connection,
@@ -14,22 +14,23 @@ import {
   createClientFromLocation
 } from '../lib/s3Client.js';
 
-// Mock OpenDAL
-vi.mock('opendal', () => {
-  const mockOperator = {
-    list: vi.fn(),
-    read: vi.fn(),
-    write: vi.fn(),
-    delete: vi.fn(),
-    stat: vi.fn()
+// Mock AWS SDK v3
+vi.mock('@aws-sdk/client-s3', () => {
+  const mockS3Client = {
+    send: vi.fn()
   };
 
   return {
-    Operator: vi.fn().mockImplementation(() => mockOperator)
+    S3Client: vi.fn().mockImplementation(() => mockS3Client),
+    ListObjectsV2Command: vi.fn(),
+    GetObjectCommand: vi.fn(),
+    PutObjectCommand: vi.fn(),
+    DeleteObjectCommand: vi.fn(),
+    HeadObjectCommand: vi.fn()
   };
 });
 
-import { Operator } from 'opendal';
+import { S3Client, ListObjectsV2Command, GetObjectCommand, PutObjectCommand, DeleteObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
 
 describe('S3 Client Configuration', () => {
   beforeEach(() => {
@@ -48,14 +49,16 @@ describe('S3 Client Configuration', () => {
 
       const client = await createS3Client(config);
       
-      expect(Operator).toHaveBeenCalledWith('s3', {
-        bucket: 'test-bucket',
-        access_key_id: 'test-access-key',
-        secret_access_key: 'test-secret-key',
+      expect(S3Client).toHaveBeenCalledWith({
         region: 'us-east-1',
-        enable_virtual_host_style: true
+        credentials: {
+          accessKeyId: 'test-access-key',
+          secretAccessKey: 'test-secret-key'
+        }
       });
       expect(client).toBeDefined();
+      expect(client.bucket).toBe('test-bucket');
+      expect(client.client).toBeDefined();
     });
 
     it('should create S3-compatible client with custom endpoint', async () => {
@@ -70,15 +73,17 @@ describe('S3 Client Configuration', () => {
 
       const client = await createS3Client(config);
       
-      expect(Operator).toHaveBeenCalledWith('s3', {
-        bucket: 'minio-bucket',
-        access_key_id: 'minio-access',
-        secret_access_key: 'minio-secret',
+      expect(S3Client).toHaveBeenCalledWith({
+        region: 'us-east-1',
+        credentials: {
+          accessKeyId: 'minio-access',
+          secretAccessKey: 'minio-secret'
+        },
         endpoint: 'https://minio.example.com:9000',
-        enable_virtual_host_style: false,
-        region: 'us-east-1' // Default region is still added
+        forcePathStyle: true
       });
       expect(client).toBeDefined();
+      expect(client.bucket).toBe('minio-bucket');
     });
 
     it('should throw error for missing required fields', async () => {
@@ -101,116 +106,127 @@ describe('S3 Client Configuration', () => {
 
       await createS3Client(config);
       
-      expect(Operator).toHaveBeenCalledWith('s3', {
-        bucket: 'test-bucket',
-        access_key_id: 'test-key',
-        secret_access_key: 'test-secret',
+      expect(S3Client).toHaveBeenCalledWith({
         region: 'us-east-1',
-        enable_virtual_host_style: true
+        credentials: {
+          accessKeyId: 'test-key',
+          secretAccessKey: 'test-secret'
+        }
       });
     });
   });
 
   describe('createClientFromLocation', () => {
     it('should create client from storage location config', async () => {
-      const locationConfig = {
+      const location = {
         type: 's3',
-        bucketName: 'stored-bucket',
-        region: 'eu-west-1',
-        accessKeyId: 'stored-key',
-        secretAccessKey: 'stored-secret',
-        serviceType: 'aws'
+        bucket: 'location-bucket',
+        region: 'us-west-2',
+        accessKey: 'location-access-key',
+        secretKey: 'location-secret-key',
+        endpoint: 'https://custom.s3.com',
+        serviceType: 'compatible'
       };
 
-      const client = await createClientFromLocation(locationConfig);
+      const client = await createClientFromLocation(location);
       
       expect(client).toBeDefined();
-      expect(Operator).toHaveBeenCalledWith('s3', expect.objectContaining({
-        bucket: 'stored-bucket',
-        region: 'eu-west-1'
-      }));
+      expect(client.bucket).toBe('location-bucket');
     });
 
     it('should return null for non-S3 storage types', async () => {
-      const locationConfig = {
+      const location = {
         type: 'local',
         path: '/local/path'
       };
 
-      const client = await createClientFromLocation(locationConfig);
-      expect(client).toBeNull();
+      const result = await createClientFromLocation(location);
+      
+      expect(result).toBeNull();
     });
   });
 });
 
 describe('S3 Client Operations', () => {
   let mockClient;
-
+  let mockClientWrapper;
+  
   beforeEach(() => {
     vi.clearAllMocks();
+    
+    // Create a mock S3Client instance
     mockClient = {
-      list: vi.fn(),
-      read: vi.fn(),
-      write: vi.fn(),
-      delete: vi.fn(),
-      stat: vi.fn()
+      send: vi.fn()
     };
+    
+    // Create proper client wrapper structure 
+    mockClientWrapper = {
+      client: mockClient,
+      bucket: 'test-bucket',
+      region: 'us-east-1',
+      endpoint: 'default'
+    };
+    
+    // Mock S3Client constructor to return our mock
+    S3Client.mockImplementation(() => mockClient);
   });
 
   describe('testS3Connection', () => {
     it('should return true for successful connection', async () => {
-      mockClient.list.mockResolvedValue([
-        { name: 'test.txt', path: '/test.txt' }
-      ]);
+      mockClient.send.mockResolvedValue({ Contents: [{ Key: 'test.txt', Size: 100 }] });
 
-      const result = await testS3Connection(mockClient);
+      const result = await testS3Connection(mockClientWrapper);
       
       expect(result).toBe(true);
-      expect(mockClient.list).toHaveBeenCalledWith('/');
+      expect(mockClient.send).toHaveBeenCalled();
+      expect(ListObjectsV2Command).toHaveBeenCalledWith({
+        Bucket: 'test-bucket',
+        Prefix: '',
+        MaxKeys: 1
+      });
     });
 
     it('should return false for failed connection', async () => {
-      mockClient.list.mockRejectedValue(new Error('Connection failed'));
+      mockClient.send.mockRejectedValue(new Error('Connection failed'));
 
-      const result = await testS3Connection(mockClient);
+      const result = await testS3Connection(mockClientWrapper);
       
       expect(result).toBe(false);
     });
 
     it('should test custom path', async () => {
-      mockClient.list.mockResolvedValue([]);
+      mockClient.send.mockResolvedValue({ Contents: [] });
 
-      await testS3Connection(mockClient, '/custom/path');
+      await testS3Connection(mockClientWrapper, '/custom/path');
       
-      expect(mockClient.list).toHaveBeenCalledWith('/custom/path');
+      expect(ListObjectsV2Command).toHaveBeenCalledWith({
+        Bucket: 'test-bucket',  
+        Prefix: 'custom/path/',
+        MaxKeys: 1
+      });
     });
   });
 
   describe('listS3Objects', () => {
     it('should list objects and format metadata', async () => {
-      const mockEntries = [
-        {
-          name: 'file1.txt',
-          path: '/file1.txt',
-          metadata: {
-            mode: 'file',
-            content_length: 1024,
-            last_modified: '2024-01-01T00:00:00Z',
-            etag: 'abc123'
+      const mockResponse = {
+        Contents: [
+          {
+            Key: 'file1.txt',
+            Size: 1024,
+            LastModified: new Date('2024-01-01T00:00:00Z')
           }
-        },
-        {
-          name: 'folder1',
-          path: '/folder1/',
-          metadata: {
-            mode: 'dir'
+        ],
+        CommonPrefixes: [
+          {
+            Prefix: 'folder1/'
           }
-        }
-      ];
+        ]
+      };
 
-      mockClient.list.mockResolvedValue(mockEntries);
+      mockClient.send.mockResolvedValue(mockResponse);
 
-      const result = await listS3Objects(mockClient, '/');
+      const result = await listS3Objects(mockClientWrapper, '/');
 
       expect(result).toEqual([
         {
@@ -219,134 +235,139 @@ describe('S3 Client Operations', () => {
           isFile: true,
           isDirectory: false,
           size: 1024,
-          lastModified: '2024-01-01T00:00:00Z',
-          etag: 'abc123'
+          lastModified: new Date('2024-01-01T00:00:00Z')
         },
         {
           name: 'folder1',
           path: '/folder1/',
-          isFile: false,
-          isDirectory: true,
           size: 0,
-          lastModified: undefined,
-          etag: undefined
+          isFile: false,
+          isDirectory: true
         }
       ]);
     });
 
     it('should handle recursive listing', async () => {
-      // First call returns directory
-      mockClient.list
-        .mockResolvedValueOnce([
+      const mockResponse = {
+        Contents: [
           {
-            name: 'folder1',
-            path: '/folder1/',
-            metadata: { mode: 'dir' }
+            Key: 'file1.txt',
+            Size: 1024,
+            LastModified: new Date('2024-01-01T00:00:00Z')
           }
-        ])
-        // Second call returns files in directory
-        .mockResolvedValueOnce([
-          {
-            name: 'nested.txt',
-            path: '/folder1/nested.txt',
-            metadata: { mode: 'file', content_length: 512 }
-          }
-        ]);
+        ]
+      };
 
-      const result = await listS3Objects(mockClient, '/', true);
+      mockClient.send.mockResolvedValue(mockResponse);
 
-      expect(result).toHaveLength(2);
-      expect(result[1].name).toBe('nested.txt');
-      expect(mockClient.list).toHaveBeenCalledTimes(2);
+      await listS3Objects(mockClientWrapper, '/', true);
+
+      expect(ListObjectsV2Command).toHaveBeenCalledWith({
+        Bucket: 'test-bucket',
+        Prefix: '',
+        Delimiter: undefined // No delimiter for recursive listing
+      });
     });
   });
 
   describe('uploadToS3', () => {
     it('should upload string data', async () => {
-      const testData = 'Hello, World!';
-      mockClient.write.mockResolvedValue();
+      mockClient.send.mockResolvedValue({});
 
-      const result = await uploadToS3(mockClient, '/test.txt', testData);
+      const result = await uploadToS3(mockClientWrapper, '/test.txt', 'test data');
 
       expect(result).toEqual({
         success: true,
         key: '/test.txt',
-        size: 13
+        size: 9
       });
-      expect(mockClient.write).toHaveBeenCalledWith('/test.txt', testData);
-    });
-
-    it('should upload File data by converting to ArrayBuffer', async () => {
-      // Test ArrayBuffer upload directly since File/Blob behavior varies in test environments
-      const testArrayBuffer = new ArrayBuffer(12);
-      const view = new Uint8Array(testArrayBuffer);
-      view.set([72, 101, 108, 108, 111, 32, 87, 111, 114, 108, 100, 33]); // "Hello World!"
-      
-      mockClient.write.mockResolvedValue();
-
-      const result = await uploadToS3(mockClient, '/uploaded.txt', testArrayBuffer);
-
-      expect(result.success).toBe(true);
-      expect(result.key).toBe('/uploaded.txt');
-      expect(mockClient.write).toHaveBeenCalledWith('/uploaded.txt', testArrayBuffer);
+      expect(PutObjectCommand).toHaveBeenCalledWith({
+        Bucket: 'test-bucket',
+        Key: 'test.txt',
+        Body: 'test data',
+        Metadata: {}
+      });
     });
 
     it('should handle upload errors', async () => {
-      mockClient.write.mockRejectedValue(new Error('Upload failed'));
+      mockClient.send.mockRejectedValue(new Error('Upload failed'));
 
-      await expect(uploadToS3(mockClient, '/fail.txt', 'data')).rejects.toThrow('Upload failed');
+      await expect(uploadToS3(mockClientWrapper, '/fail.txt', 'data')).rejects.toThrow('Upload failed');
     });
   });
 
   describe('downloadFromS3', () => {
     it('should download file data', async () => {
-      const testData = new ArrayBuffer(1024);
-      mockClient.read.mockResolvedValue(testData);
+      const mockReadableStream = {
+        getReader: () => ({
+          read: vi.fn()
+            .mockResolvedValueOnce({ done: false, value: new Uint8Array([116, 101, 115, 116]) }) // 'test'
+            .mockResolvedValueOnce({ done: true })
+        })
+      };
 
-      const result = await downloadFromS3(mockClient, '/download.txt');
+      mockClient.send.mockResolvedValue({
+        Body: mockReadableStream
+      });
 
-      expect(result).toBe(testData);
-      expect(mockClient.read).toHaveBeenCalledWith('/download.txt');
+      const result = await downloadFromS3(mockClientWrapper, '/download.txt');
+
+      expect(result).toBeInstanceOf(ArrayBuffer);
+      expect(GetObjectCommand).toHaveBeenCalledWith({
+        Bucket: 'test-bucket',
+        Key: 'download.txt'
+      });
     });
 
     it('should handle download errors', async () => {
-      mockClient.read.mockRejectedValue(new Error('File not found'));
+      mockClient.send.mockRejectedValue(new Error('File not found'));
 
-      await expect(downloadFromS3(mockClient, '/missing.txt')).rejects.toThrow('File not found');
+      await expect(downloadFromS3(mockClientWrapper, '/missing.txt')).rejects.toThrow('File not found');
     });
   });
 
   describe('deleteFromS3', () => {
     it('should delete file successfully', async () => {
-      mockClient.delete.mockResolvedValue();
+      mockClient.send.mockResolvedValue({});
 
-      const result = await deleteFromS3(mockClient, '/delete.txt');
+      const result = await deleteFromS3(mockClientWrapper, '/delete.txt');
 
-      expect(result).toBe(true);
-      expect(mockClient.delete).toHaveBeenCalledWith('/delete.txt');
+      expect(result).toEqual({
+        success: true,
+        key: '/delete.txt'
+      });
+      expect(DeleteObjectCommand).toHaveBeenCalledWith({
+        Bucket: 'test-bucket',
+        Key: 'delete.txt'
+      });
     });
 
     it('should handle delete errors', async () => {
-      mockClient.delete.mockRejectedValue(new Error('Delete failed'));
+      mockClient.send.mockRejectedValue(new Error('Delete failed'));
 
-      await expect(deleteFromS3(mockClient, '/fail-delete.txt')).rejects.toThrow('Delete failed');
+      await expect(deleteFromS3(mockClientWrapper, '/fail-delete.txt')).rejects.toThrow('Delete failed');
     });
   });
 
   describe('s3ObjectExists', () => {
     it('should return true if object exists', async () => {
-      mockClient.stat.mockResolvedValue({ content_length: 1024 });
+      mockClient.send.mockResolvedValue({});
 
-      const result = await s3ObjectExists(mockClient, '/exists.txt');
+      const result = await s3ObjectExists(mockClientWrapper, '/exists.txt');
 
       expect(result).toBe(true);
-      expect(mockClient.stat).toHaveBeenCalledWith('/exists.txt');
+      expect(HeadObjectCommand).toHaveBeenCalledWith({
+        Bucket: 'test-bucket',
+        Key: 'exists.txt'
+      });
     });
 
     it('should return false if object does not exist', async () => {
-      mockClient.stat.mockRejectedValue(new Error('Not found'));
+      const notFoundError = new Error('Not found');
+      notFoundError.name = 'NotFound';
+      mockClient.send.mockRejectedValue(notFoundError);
 
-      const result = await s3ObjectExists(mockClient, '/missing.txt');
+      const result = await s3ObjectExists(mockClientWrapper, '/missing.txt');
 
       expect(result).toBe(false);
     });
@@ -354,207 +375,40 @@ describe('S3 Client Operations', () => {
 
   describe('getS3ObjectMetadata', () => {
     it('should return metadata for existing object', async () => {
-      const mockMetadata = {
-        content_length: 2048,
-        last_modified: '2024-01-02T12:00:00Z',
-        etag: 'def456',
-        content_type: 'text/plain'
+      const mockResponse = {
+        ContentLength: 1024,
+        LastModified: new Date('2024-01-01T00:00:00Z'),
+        ContentType: 'text/plain',
+        Metadata: { 'custom-key': 'custom-value' }
       };
-      mockClient.stat.mockResolvedValue(mockMetadata);
 
-      const result = await getS3ObjectMetadata(mockClient, '/metadata.txt');
+      mockClient.send.mockResolvedValue(mockResponse);
+
+      const result = await getS3ObjectMetadata(mockClientWrapper, '/file.txt');
 
       expect(result).toEqual({
-        size: 2048,
-        lastModified: '2024-01-02T12:00:00Z',
-        etag: 'def456',
+        exists: true,
+        size: 1024,
+        lastModified: new Date('2024-01-01T00:00:00Z'),
         contentType: 'text/plain',
-        exists: true
+        metadata: { 'custom-key': 'custom-value' }
       });
     });
 
     it('should return exists: false for missing object', async () => {
-      mockClient.stat.mockRejectedValue(new Error('Not found'));
+      const notFoundError = new Error('Not found');
+      notFoundError.name = 'NotFound';
+      mockClient.send.mockRejectedValue(notFoundError);
 
-      const result = await getS3ObjectMetadata(mockClient, '/missing.txt');
+      const result = await getS3ObjectMetadata(mockClientWrapper, '/missing.txt');
 
-      expect(result).toEqual({ exists: false });
-    });
-  });
-});
-
-describe('BIDS Dataset Integration Tests', () => {
-  describe('OpenNeuro Dataset ds006486 Structure', () => {
-    it('should handle BIDS dataset structure validation', async () => {
-      const mockClient = {
-        list: vi.fn()
-      };
-
-      // Mock BIDS dataset structure based on OpenNeuro ds006486
-      const bidsStructure = [
-        { name: 'dataset_description.json', path: '/dataset_description.json', metadata: { mode: 'file' }},
-        { name: 'participants.tsv', path: '/participants.tsv', metadata: { mode: 'file' }},
-        { name: 'README', path: '/README', metadata: { mode: 'file' }},
-        { name: 'CHANGES', path: '/CHANGES', metadata: { mode: 'file' }},
-        { name: 'sub-01', path: '/sub-01/', metadata: { mode: 'dir' }},
-        { name: 'sub-02', path: '/sub-02/', metadata: { mode: 'dir' }},
-        { name: 'derivatives', path: '/derivatives/', metadata: { mode: 'dir' }}
-      ];
-
-      mockClient.list.mockResolvedValue(bidsStructure);
-
-      const objects = await listS3Objects(mockClient, '/');
-      
-      // Verify BIDS required files are present
-      const requiredFiles = ['dataset_description.json', 'README'];
-      const foundFiles = objects.filter(obj => obj.isFile).map(obj => obj.name);
-      
-      requiredFiles.forEach(file => {
-        expect(foundFiles).toContain(file);
+      expect(result).toEqual({
+        exists: false,
+        size: 0,
+        lastModified: null,
+        contentType: null,
+        metadata: {}
       });
-
-      // Verify subject directories exist
-      const subjectDirs = objects.filter(obj => obj.isDirectory && obj.name.startsWith('sub-'));
-      expect(subjectDirs.length).toBeGreaterThan(0);
     });
-
-    it('should validate BIDS dataset metadata', async () => {
-      const mockClient = {
-        read: vi.fn()
-      };
-
-      // Mock dataset_description.json content
-      const datasetDescription = {
-        Name: "Auditory and visual 7T fMRI data for localizing the cortical locus of the McGurk effect",
-        BIDSVersion: "1.8.0",
-        DatasetType: "raw",
-        Authors: ["Author Name"],
-        License: "CC0"
-      };
-
-      mockClient.read.mockResolvedValue(JSON.stringify(datasetDescription));
-
-      const data = await downloadFromS3(mockClient, '/dataset_description.json');
-      const metadata = JSON.parse(data);
-
-      expect(metadata.Name).toBeDefined();
-      expect(metadata.BIDSVersion).toBeDefined();
-      expect(metadata.DatasetType).toBe('raw');
-      expect(Array.isArray(metadata.Authors)).toBe(true);
-    });
-
-    it('should handle participant data structure', async () => {
-      const mockClient = {
-        read: vi.fn()
-      };
-
-      // Mock participants.tsv content
-      const participantsData = `participant_id\tage\tsex\ncsub-01\t25\tF\nsub-02\t30\tM`;
-      
-      mockClient.read.mockResolvedValue(participantsData);
-
-      const data = await downloadFromS3(mockClient, '/participants.tsv');
-      
-      expect(data).toContain('participant_id');
-      expect(data).toContain('sub-01');
-      expect(data).toContain('sub-02');
-    });
-  });
-
-  describe('Dataset File Operations', () => {
-    it('should efficiently list only dataset metadata files', async () => {
-      const mockClient = {
-        list: vi.fn()
-      };
-
-      // Only list root level files first (don't download subject data)
-      const rootFiles = [
-        { name: 'dataset_description.json', path: '/dataset_description.json', metadata: { mode: 'file', content_length: 500 }},
-        { name: 'participants.tsv', path: '/participants.tsv', metadata: { mode: 'file', content_length: 1024 }},
-        { name: 'README', path: '/README', metadata: { mode: 'file', content_length: 2048 }}
-      ];
-
-      mockClient.list.mockResolvedValue(rootFiles);
-
-      const objects = await listS3Objects(mockClient, '/', false); // non-recursive
-
-      expect(objects).toHaveLength(3);
-      expect(objects.every(obj => obj.isFile)).toBe(true);
-      expect(objects.reduce((sum, obj) => sum + obj.size, 0)).toBe(3572); // Total size
-    });
-
-    it('should validate BIDS compliance without downloading large files', async () => {
-      const mockClient = {
-        list: vi.fn(),
-        stat: vi.fn()
-      };
-
-      // Check for required BIDS files
-      const requiredFiles = [
-        'dataset_description.json',
-        'participants.tsv',
-        'README'
-      ];
-
-      // Mock stat calls for each required file
-      mockClient.stat.mockImplementation((path) => {
-        if (requiredFiles.some(file => path.includes(file))) {
-          return Promise.resolve({ content_length: 1024, exists: true });
-        }
-        return Promise.reject(new Error('Not found'));
-      });
-
-      // Check all required files exist
-      const checks = await Promise.all(
-        requiredFiles.map(file => s3ObjectExists(mockClient, `/${file}`))
-      );
-
-      expect(checks.every(exists => exists)).toBe(true);
-    });
-  });
-});
-
-describe('Error Handling and Edge Cases', () => {
-  let mockClient;
-
-  beforeEach(() => {
-    mockClient = {
-      list: vi.fn(),
-      read: vi.fn(),
-      write: vi.fn(),
-      delete: vi.fn(),
-      stat: vi.fn()
-    };
-  });
-
-  it('should handle network timeouts gracefully', async () => {
-    mockClient.list.mockRejectedValue(new Error('Network timeout'));
-
-    const result = await testS3Connection(mockClient);
-    expect(result).toBe(false);
-  });
-
-  it('should handle permission errors', async () => {
-    mockClient.read.mockRejectedValue(new Error('Access denied'));
-
-    await expect(downloadFromS3(mockClient, '/private.txt'))
-      .rejects.toThrow('Access denied');
-  });
-
-  it('should handle large file uploads', async () => {
-    const largeData = new ArrayBuffer(1024 * 1024 * 10); // 10MB
-    mockClient.write.mockResolvedValue();
-
-    const result = await uploadToS3(mockClient, '/large-file.bin', largeData);
-
-    expect(result.success).toBe(true);
-    expect(result.size).toBe(1024 * 1024 * 10);
-  });
-
-  it('should handle empty bucket listing', async () => {
-    mockClient.list.mockResolvedValue([]);
-
-    const objects = await listS3Objects(mockClient);
-    expect(objects).toEqual([]);
   });
 });

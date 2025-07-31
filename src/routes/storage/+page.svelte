@@ -32,7 +32,6 @@
     accessKeyId: '',
     secretAccessKey: '',
     endpoint: '',
-    useSSL: true,
     serviceType: 'aws' // 'aws' or 'compatible'
   };
   
@@ -210,6 +209,7 @@
     if (addLocationForm.type !== 's3') return;
     
     isTestingConnection = true;
+    connectionTestResult = null;
     showNotification('info', 'Testing S3 connection...');
     
     try {
@@ -219,7 +219,6 @@
         accessKeyId: addLocationForm.accessKeyId,
         secretAccessKey: addLocationForm.secretAccessKey,
         endpoint: addLocationForm.endpoint,
-        useSSL: addLocationForm.useSSL,
         serviceType: addLocationForm.serviceType
       };
       
@@ -227,12 +226,15 @@
       const connectionSuccess = await testS3Connection(client);
       
       if (connectionSuccess) {
+        connectionTestResult = { success: true, message: 'S3 connection test successful!' };
         showNotification('success', 'S3 connection test successful!');
       } else {
+        connectionTestResult = { success: false, message: 'S3 connection test failed. Please check your credentials and settings.' };
         showNotification('error', 'S3 connection test failed. Please check your credentials and settings.');
       }
     } catch (error) {
       console.error('S3 connection test error:', error);
+      connectionTestResult = { success: false, message: `Connection test failed: ${error.message}` };
       showNotification('error', `Connection test failed: ${error.message}`);
     } finally {
       isTestingConnection = false;
@@ -250,10 +252,10 @@
       accessKeyId: '',
       secretAccessKey: '',
       endpoint: '',
-      useSSL: true,
       serviceType: 'aws'
     };
     editingLocationId = null;
+    connectionTestResult = null;
   }
   
   // Handle adding new storage location
@@ -278,7 +280,6 @@
       newLocation.accessKeyId = addLocationForm.accessKeyId;
       newLocation.secretAccessKey = addLocationForm.secretAccessKey;
       newLocation.endpoint = addLocationForm.endpoint;
-      newLocation.useSSL = addLocationForm.useSSL;
       newLocation.serviceType = addLocationForm.serviceType;
     }
     
@@ -321,7 +322,6 @@
       updatedLocation.accessKeyId = addLocationForm.accessKeyId;
       updatedLocation.secretAccessKey = addLocationForm.secretAccessKey;
       updatedLocation.endpoint = addLocationForm.endpoint;
-      updatedLocation.useSSL = addLocationForm.useSSL;
       updatedLocation.serviceType = addLocationForm.serviceType;
     }
     
@@ -372,7 +372,6 @@
         accessKeyId: locationToEdit.accessKeyId || '',
         secretAccessKey: locationToEdit.secretAccessKey || '',
         endpoint: locationToEdit.endpoint || '',
-        useSSL: locationToEdit.useSSL !== undefined ? locationToEdit.useSSL : true,
         serviceType: locationToEdit.serviceType || 'aws'
       };
       
@@ -813,12 +812,12 @@
               </div>
             {:else if addLocationForm.serviceType === 'compatible'}
               <div class="form-control">
-                <label class="label" for="endpoint">
-                  <span class="label-text">Endpoint URL</span>
+                <label class="label" for="region">
+                  <span class="label-text">Region</span>
                 </label>
-                <input type="text" id="endpoint" bind:value={addLocationForm.endpoint} placeholder="https://minio.example.com:9000" class="input input-bordered" />
+                <input type="text" id="region" bind:value={addLocationForm.region} placeholder="us-east-1" class="input input-bordered" />
                 <label class="label">
-                  <span class="label-text-alt">Full URL including protocol and port</span>
+                  <span class="label-text-alt">Region for S3-compatible service (e.g., us-east-1)</span>
                 </label>
               </div>
             {/if}
@@ -826,13 +825,13 @@
           
           {#if addLocationForm.serviceType === 'compatible'}
             <div class="form-control mb-4">
-              <label class="label cursor-pointer">
-                <input type="checkbox" bind:checked={addLocationForm.useSSL} class="checkbox checkbox-primary" />
-                <span class="label-text ml-2">Use SSL/HTTPS</span>
+              <label class="label" for="endpoint">
+                <span class="label-text">Endpoint URL</span>
               </label>
-              <div class="label">
-                <span class="label-text-alt">Enable if your S3-compatible service uses HTTPS</span>
-              </div>
+              <input type="text" id="endpoint" bind:value={addLocationForm.endpoint} placeholder="https://minio.example.com:9000" class="input input-bordered" />
+              <label class="label">
+                <span class="label-text-alt">Full URL including protocol and port</span>
+              </label>
             </div>
           {/if}
           
@@ -841,39 +840,14 @@
               <label class="label" for="access-key">
                 <span class="label-text">Access Key ID</span>
               </label>
-              <input type="text" id="access-key" bind:value={addLocationForm.accessKeyId} placeholder="AKIAIOSFODNN7EXAMPLE" class="input input-bordered" />
+              <input type="text" id="access-key" bind:value={addLocationForm.accessKeyId} placeholder="" class="input input-bordered" />
             </div>
             <div class="form-control">
               <label class="label" for="secret-key">
                 <span class="label-text">Secret Access Key</span>
               </label>
-              <input type="password" id="secret-key" bind:value={addLocationForm.secretAccessKey} placeholder="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY" class="input input-bordered" />
+              <input type="password" id="secret-key" bind:value={addLocationForm.secretAccessKey} placeholder="" class="input input-bordered" />
             </div>
-          </div>
-          
-          <!-- Test Connection Button -->
-          <div class="form-control mb-4">
-            <button 
-              type="button" 
-              class="btn btn-outline btn-primary" 
-              on:click={testS3ConnectionFromForm}
-              disabled={isTestingConnection}
-            >
-              {#if isTestingConnection}
-                <span class="loading loading-spinner loading-xs"></span>
-                Testing Connection...
-              {:else}
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                Test Connection
-              {/if}
-            </button>
-            {#if connectionTestResult}
-              <div class="alert {connectionTestResult.success ? 'alert-success' : 'alert-error'} mt-2">
-                <span>{connectionTestResult.message}</span>
-              </div>
-            {/if}
           </div>
           
           <div class="alert alert-info mb-4">
@@ -1006,12 +980,12 @@
               </div>
             {:else if addLocationForm.serviceType === 'compatible'}
               <div class="form-control">
-                <label class="label" for="edit-endpoint">
-                  <span class="label-text">Endpoint URL</span>
+                <label class="label" for="edit-region">
+                  <span class="label-text">Region</span>
                 </label>
-                <input type="text" id="edit-endpoint" bind:value={addLocationForm.endpoint} placeholder="https://minio.example.com:9000" class="input input-bordered" />
+                <input type="text" id="edit-region" bind:value={addLocationForm.region} placeholder="us-east-1" class="input input-bordered" />
                 <label class="label">
-                  <span class="label-text-alt">Full URL including protocol and port</span>
+                  <span class="label-text-alt">Region for S3-compatible service (e.g., us-east-1)</span>
                 </label>
               </div>
             {/if}
@@ -1019,13 +993,13 @@
           
           {#if addLocationForm.serviceType === 'compatible'}
             <div class="form-control mb-4">
-              <label class="label cursor-pointer">
-                <input type="checkbox" bind:checked={addLocationForm.useSSL} class="checkbox checkbox-primary" />
-                <span class="label-text ml-2">Use SSL/HTTPS</span>
+              <label class="label" for="edit-endpoint">
+                <span class="label-text">Endpoint URL</span>
               </label>
-              <div class="label">
-                <span class="label-text-alt">Enable if your S3-compatible service uses HTTPS</span>
-              </div>
+              <input type="text" id="edit-endpoint" bind:value={addLocationForm.endpoint} placeholder="https://minio.example.com:9000" class="input input-bordered" />
+              <label class="label">
+                <span class="label-text-alt">Full URL including protocol and port</span>
+              </label>
             </div>
           {/if}
           
@@ -1034,13 +1008,13 @@
               <label class="label" for="edit-access-key">
                 <span class="label-text">Access Key ID</span>
               </label>
-              <input type="text" id="edit-access-key" bind:value={addLocationForm.accessKeyId} placeholder="AKIAIOSFODNN7EXAMPLE" class="input input-bordered" />
+              <input type="text" id="edit-access-key" bind:value={addLocationForm.accessKeyId} placeholder="" class="input input-bordered" />
             </div>
             <div class="form-control">
               <label class="label" for="edit-secret-key">
                 <span class="label-text">Secret Access Key</span>
               </label>
-              <input type="password" id="edit-secret-key" bind:value={addLocationForm.secretAccessKey} placeholder="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY" class="input input-bordered" />
+              <input type="password" id="edit-secret-key" bind:value={addLocationForm.secretAccessKey} placeholder="" class="input input-bordered" />
             </div>
           </div>
           
