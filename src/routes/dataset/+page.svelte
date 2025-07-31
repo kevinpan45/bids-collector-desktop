@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import axios from 'axios';
   import toast from 'svelte-french-toast';
+  import { loadConfig } from '$lib/storage.js';
   
   let datasets = [];
   let loading = true;
@@ -13,6 +14,13 @@
   
   let viewMode = 'list'; // 'grid' or 'list'
   let selectedProvider = 'All'; // 'All', 'OpenNeuro', 'CCNDC'
+  
+  // Download modal state
+  let showDownloadModal = false;
+  let selectedDataset = null;
+  let storageLocations = [];
+  let selectedLocationIds = []; // Changed to array for multiple selections
+  let isDownloading = false;
   
   $: filteredDatasets = datasets;
   
@@ -66,7 +74,19 @@
   onMount(() => {
     console.log('Dataset management page loaded');
     fetchDatasets();
+    loadStorageLocations();
   });
+  
+  async function loadStorageLocations() {
+    try {
+      const config = await loadConfig('storage', { storageLocations: [] });
+      storageLocations = config.storageLocations || [];
+      console.log(`Loaded ${storageLocations.length} storage locations`);
+    } catch (error) {
+      console.error('Failed to load storage locations:', error);
+      storageLocations = [];
+    }
+  }
   
   function getModalityIcon(modality) {
     switch(modality) {
@@ -99,24 +119,83 @@
     return Math.round((numBytes / Math.pow(k, i)) * 100) / 100 + ' ' + units[i];
   }
   
-  function handleExportDataset(dataset) {
-    console.log('Export dataset:', dataset.name);
-    // Here you would handle BIDS export functionality
-  }
-  
-  function handleValidateDataset(dataset) {
-    console.log('Validate dataset:', dataset.name);
-    // Here you would run BIDS validation
-  }
-  
   function handleViewDataset(dataset) {
     console.log('View dataset details:', dataset.name);
     // Navigate to dataset detail view
   }
   
   function handleDownloadDataset(dataset) {
-    console.log('Download dataset from OpenNeuro:', dataset.name);
-    // Here you would handle downloading the dataset from OpenNeuro
+    selectedDataset = dataset;
+    showDownloadModal = true;
+    console.log('Download dataset:', dataset.name);
+  }
+  
+  function closeDownloadModal() {
+    showDownloadModal = false;
+    selectedDataset = null;
+    selectedLocationIds = [];
+  }
+  
+  async function startDownload() {
+    if (selectedLocationIds.length === 0) {
+      toast.error('Please select at least one storage location');
+      return;
+    }
+    
+    const selectedLocations = storageLocations.filter(loc => selectedLocationIds.includes(loc.id));
+    if (selectedLocations.length === 0) {
+      toast.error('Selected storage locations not found');
+      return;
+    }
+    
+    isDownloading = true;
+    try {
+      // Start downloads to all selected locations
+      console.log(`Starting download of ${selectedDataset.name} to ${selectedLocations.length} location(s)`);
+      
+      const downloadPromises = selectedLocations.map(async (location) => {
+        // Simulate individual download to each location
+        console.log(`Downloading ${selectedDataset.name} to ${location.name}`);
+        
+        // Simulate download delay for each location
+        await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
+        
+        return location;
+      });
+      
+      toast.success(`Download started: ${selectedDataset.name} to ${selectedLocations.length} location(s)`);
+      
+      // Wait for all downloads to complete
+      const completedDownloads = await Promise.all(downloadPromises);
+      
+      toast.success(`Download completed: ${selectedDataset.name} to ${completedDownloads.length} location(s)`);
+      closeDownloadModal();
+    } catch (error) {
+      console.error('Download failed:', error);
+      toast.error(`Download failed: ${error.message}`);
+    } finally {
+      isDownloading = false;
+    }
+  }
+  
+  function toggleLocationSelection(locationId) {
+    if (selectedLocationIds.includes(locationId)) {
+      selectedLocationIds = selectedLocationIds.filter(id => id !== locationId);
+    } else {
+      selectedLocationIds = [...selectedLocationIds, locationId];
+    }
+  }
+  
+  function selectAllLocations() {
+    selectedLocationIds = storageLocations.map(loc => loc.id);
+  }
+  
+  function clearAllSelections() {
+    selectedLocationIds = [];
+  }
+  
+  function navigateToStorage() {
+    window.location.href = '/storage';
   }
 </script>
 
@@ -240,9 +319,6 @@
                   <ul tabindex="0" class="dropdown-content z-[1] menu p-2 shadow bg-base-100 rounded-box w-52">
                     <li><button type="button" on:click={() => handleViewDataset(dataset)}>View Details</button></li>
                     <li><button type="button" on:click={() => handleDownloadDataset(dataset)}>Download Dataset</button></li>
-                    <li><button type="button" on:click={() => handleValidateDataset(dataset)}>Validate BIDS</button></li>
-                    <li><button type="button" on:click={() => handleExportDataset(dataset)}>Export</button></li>
-                    <li><button type="button" on:click={() => console.log('Add to collection:', dataset.name)}>Add to Collection</button></li>
                   </ul>
                 </div>
               </div>
@@ -347,9 +423,7 @@
                         <!-- svelte-ignore a11y-no-noninteractive-tabindex -->
                         <ul tabindex="0" class="dropdown-content z-[1] menu p-2 shadow bg-base-100 rounded-box w-48">
                           <li><button type="button" on:click={() => handleViewDataset(dataset)}>View Details</button></li>
-                          <li><button type="button" on:click={() => handleValidateDataset(dataset)}>Validate BIDS</button></li>
-                          <li><button type="button" on:click={() => handleExportDataset(dataset)}>Export</button></li>
-                          <li><button type="button" on:click={() => console.log('Add to collection:', dataset.name)}>Add to Collection</button></li>
+                          <li><button type="button" on:click={() => handleDownloadDataset(dataset)}>Download Dataset</button></li>
                         </ul>
                       </div>
                     </div>
@@ -377,11 +451,179 @@
   {/if}
 </div>
 
+<!-- Download Modal -->
+{#if showDownloadModal && selectedDataset}
+  <div class="modal modal-open">
+    <div class="modal-box">
+      <h3 class="font-bold text-lg mb-4">Download Dataset</h3>
+      
+      <!-- Dataset Info -->
+      <div class="bg-base-200 rounded-lg p-4 mb-6">
+        <!-- Header -->
+        <div class="flex justify-between items-start mb-4">
+          <div class="flex-1">
+            <h4 class="font-bold text-lg mb-2">{selectedDataset.name}</h4>
+            <div class="text-sm text-base-content/60">v{selectedDataset.version}</div>
+          </div>
+        </div>
+        
+        <!-- Description -->
+        <p class="text-sm text-base-content/80 mb-4 line-clamp-2">{selectedDataset.description}</p>
+        
+        <!-- Provider and Modalities -->
+        <div class="flex flex-wrap gap-2 mb-4 items-center">
+          <span class="badge badge-ghost badge-sm">📍 {selectedDataset.provider}</span>
+          {#each selectedDataset.modalities as modality}
+            <span class="badge badge-outline badge-sm">
+              {getModalityIcon(modality)} {modality.toUpperCase()}
+            </span>
+          {/each}
+        </div>
+        
+        <!-- Stats -->
+        <div class="grid grid-cols-2 gap-4 mb-4">
+          <div class="text-center">
+            <div class="text-lg font-bold text-primary">{selectedDataset.participants}</div>
+            <div class="text-xs text-base-content/60">Participants</div>
+          </div>
+          <div class="text-center">
+            <div class="text-lg font-bold text-secondary">{selectedDataset.size}</div>
+            <div class="text-xs text-base-content/60">Dataset Size</div>
+          </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="flex justify-between items-center text-sm text-base-content/60">
+          <span>Created: {selectedDataset.created}</span>
+          <span>ID: {selectedDataset.id}</span>
+        </div>
+      </div>
+      
+      {#if storageLocations.length === 0}
+        <!-- No Storage Locations -->
+        <div class="alert alert-warning mb-6">
+          <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+          </svg>
+          <div>
+            <h3 class="font-bold">No Storage Locations Found</h3>
+            <div class="text-xs">You need to configure at least one storage location before downloading datasets.</div>
+          </div>
+        </div>
+        
+        <div class="modal-action">
+          <button class="btn btn-primary" on:click={navigateToStorage}>
+            Configure Storage
+          </button>
+          <button class="btn" on:click={closeDownloadModal}>Cancel</button>
+        </div>
+      {:else}
+        <!-- Storage Location Selection -->
+        <div class="form-control mb-6">
+          <label class="label">
+            <span class="label-text font-medium">Select Download Locations</span>
+            <div class="flex gap-2">
+              <button 
+                type="button" 
+                class="btn btn-xs btn-outline" 
+                on:click={selectAllLocations}
+                disabled={isDownloading}
+              >
+                Select All
+              </button>
+              <button 
+                type="button" 
+                class="btn btn-xs btn-outline" 
+                on:click={clearAllSelections}
+                disabled={isDownloading}
+              >
+                Clear All
+              </button>
+            </div>
+          </label>
+          
+          <!-- Location List with Checkboxes -->
+          <div class="space-y-3 max-h-60 overflow-y-auto">
+            {#each storageLocations as location}
+              <div class="form-control">
+                <label class="label cursor-pointer justify-start gap-3 p-3 rounded-lg border border-base-300 hover:border-primary transition-colors">
+                  <input 
+                    type="checkbox" 
+                    class="checkbox checkbox-primary" 
+                    checked={selectedLocationIds.includes(location.id)}
+                    on:change={() => toggleLocationSelection(location.id)}
+                    disabled={isDownloading}
+                  />
+                  <div class="flex-1">
+                    <div class="flex items-center gap-2 mb-1">
+                      <span class="font-medium">{location.name}</span>
+                      <span class="badge badge-outline badge-xs">
+                        {location.type === 'local' ? '📁 Local' : '☁️ S3'}
+                      </span>
+                      {#if location.isDefault}
+                        <span class="badge badge-primary badge-xs">Default</span>
+                      {/if}
+                    </div>
+                    <div class="text-sm text-base-content/60">
+                      {#if location.type === 'local'}
+                        {location.path}
+                      {:else}
+                        {location.bucketName}{location.prefix ? ` / ${location.prefix}` : ''}
+                      {/if}
+                    </div>
+                    {#if location.description}
+                      <div class="text-xs text-base-content/50 mt-1">{location.description}</div>
+                    {/if}
+                  </div>
+                </label>
+              </div>
+            {/each}
+          </div>
+          
+          <!-- Selection Summary -->
+          {#if selectedLocationIds.length > 0}
+            <div class="mt-3 p-3 bg-primary/10 rounded-lg">
+              <div class="text-sm font-medium text-primary">
+                {selectedLocationIds.length} location{selectedLocationIds.length > 1 ? 's' : ''} selected
+              </div>
+              <div class="text-xs text-base-content/60 mt-1">
+                Dataset will be downloaded to all selected locations simultaneously
+              </div>
+            </div>
+          {/if}
+        </div>
+        
+        <div class="modal-action">
+          <button 
+            class="btn btn-primary" 
+            class:loading={isDownloading}
+            disabled={selectedLocationIds.length === 0 || isDownloading}
+            on:click={startDownload}
+          >
+            {isDownloading ? 'Downloading...' : `Start Download${selectedLocationIds.length > 1 ? ` to ${selectedLocationIds.length} Locations` : ''}`}
+          </button>
+          <button class="btn" on:click={closeDownloadModal} disabled={isDownloading}>
+            Cancel
+          </button>
+        </div>
+      {/if}
+    </div>
+  </div>
+{/if}
+
 <style>
   .line-clamp-3 {
     display: -webkit-box;
     -webkit-line-clamp: 3;
     line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
