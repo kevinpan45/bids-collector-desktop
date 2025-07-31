@@ -14,6 +14,13 @@ let menus = [
         enabled: true 
     },
     { 
+        name: "collection", 
+        link: "/collection", 
+        alias: "Collections", 
+        icon: "download", 
+        enabled: true 
+    },
+    { 
         name: "storage", 
         link: "/storage", 
         alias: "Storage", 

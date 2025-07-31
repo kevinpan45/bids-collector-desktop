@@ -3,6 +3,7 @@
   import axios from 'axios';
   import toast from 'svelte-french-toast';
   import { loadConfig } from '$lib/storage.js';
+  import { createCollectionTask } from '$lib/collections.js';
   
   let datasets = [];
   let loading = true;
@@ -150,29 +151,21 @@
     
     isDownloading = true;
     try {
-      // Start downloads to all selected locations
-      console.log(`Starting download of ${selectedDataset.name} to ${selectedLocations.length} location(s)`);
+      // Create collection task
+      const collectionTask = await createCollectionTask(selectedDataset, selectedLocations);
       
-      const downloadPromises = selectedLocations.map(async (location) => {
-        // Simulate individual download to each location
-        console.log(`Downloading ${selectedDataset.name} to ${location.name}`);
-        
-        // Simulate download delay for each location
-        await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
-        
-        return location;
+      console.log(`Created collection task: ${collectionTask.name}`);
+      toast.success(`Collection task created: ${selectedDataset.name}`);
+      
+      // Show download started message
+      toast.success(`Download queued to ${selectedLocations.length} location(s). Check Collections page to track progress.`, {
+        duration: 5000
       });
       
-      toast.success(`Download started: ${selectedDataset.name} to ${selectedLocations.length} location(s)`);
-      
-      // Wait for all downloads to complete
-      const completedDownloads = await Promise.all(downloadPromises);
-      
-      toast.success(`Download completed: ${selectedDataset.name} to ${completedDownloads.length} location(s)`);
       closeDownloadModal();
     } catch (error) {
-      console.error('Download failed:', error);
-      toast.error(`Download failed: ${error.message}`);
+      console.error('Failed to create collection task:', error);
+      toast.error(`Failed to create collection task: ${error.message}`);
     } finally {
       isDownloading = false;
     }
@@ -600,7 +593,7 @@
             disabled={selectedLocationIds.length === 0 || isDownloading}
             on:click={startDownload}
           >
-            {isDownloading ? 'Downloading...' : `Start Download${selectedLocationIds.length > 1 ? ` to ${selectedLocationIds.length} Locations` : ''}`}
+            {isDownloading ? 'Creating Task...' : `Create Collection Task${selectedLocationIds.length > 1 ? ` (${selectedLocationIds.length} Locations)` : ''}`}
           </button>
           <button class="btn" on:click={closeDownloadModal} disabled={isDownloading}>
             Cancel
