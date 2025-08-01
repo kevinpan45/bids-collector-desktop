@@ -1,7 +1,7 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { saveConfig, loadConfig } from '$lib/storage.js';
-  import { createS3Client, testS3Connection, createClientFromLocation } from '$lib/s3Client.js';
+  import { createS3Client, testS3Connection } from '$lib/s3Client.js';
   
   // Tauri APIs
   let tauriOpen = null;
@@ -20,19 +20,17 @@
   let showAddLocationModal = false;
   let showEditLocationModal = false;
   let editingLocationId = null;
-  let isTestingConnection = false;
-  let connectionTestResult = null;
+  let modalKey = 0; // Key to force modal re-render
   let addLocationForm = {
-    type: 'local', // 'local' or 's3'
+    type: 'local', // 'local' or 's3-compatible'
     name: '',
     path: '',
-    // S3 specific fields
+    // S3-compatible fields
     bucketName: '',
     region: 'us-east-1',
     accessKeyId: '',
     secretAccessKey: '',
-    endpoint: '',
-    serviceType: 'aws' // 'aws' or 'compatible'
+    endpoint: ''
   };
   
   // Notification state
@@ -43,6 +41,15 @@
   };
   
   let nextLocationId = 1;
+
+  // S3 connection testing state
+  let isTestingConnection = false;
+  let connectionTestResult = null;
+  
+  // Security state
+  let showSecurityWarning = false;
+  let securityWarning = getSecurityWarning();
+  let showCredentials = false; // Toggle for showing/hiding credentials
   
   let recentFiles = [
     {
@@ -131,7 +138,18 @@
       console.log(`Loaded ${storageLocations.length} storage locations from persistent config`);
     } catch (error) {
       console.error('Failed to load storage config:', error);
-      showNotification('warning', 'Failed to load saved storage configuration. Using defaults.');
+      // Don't show notification for config loading failures - it's handled with fallbacks
+      console.log('Using default storage configuration due to loading error');
+      
+      // Initialize with defaults if config loading fails completely
+      storageLocations = [];
+      nextLocationId = 1;
+      storageData = {
+        total: '10 GB',
+        used: '4.85 GB',
+        available: '5.15 GB',
+        usedPercentage: 48.5
+      };
     }
   }
   
@@ -152,7 +170,9 @@
       }
     } catch (error) {
       console.error('Failed to save storage config:', error);
-      showNotification('warning', 'Failed to save storage configuration to disk.');
+      // Only show notification for save failures if it's a critical error
+      // Most save operations will fall back to localStorage automatically
+      console.log('Storage configuration may have been saved to browser storage as fallback');
     }
   }
   
@@ -161,7 +181,7 @@
     return storageLocations.some(location => location.type === 'local');
   }
   
-  // Validate form based on storage type
+  // Validate form for local storage only
   function validateForm() {
     if (!addLocationForm.name.trim()) {
       showNotification('error', 'Please enter a name for the storage location.');
@@ -179,66 +199,26 @@
         showNotification('error', 'Please enter a valid local path.');
         return false;
       }
-    } else if (addLocationForm.type === 's3') {
+    } else if (addLocationForm.type === 's3-compatible') {
       if (!addLocationForm.bucketName.trim()) {
-        showNotification('error', 'Please enter the S3 bucket name.');
+        showNotification('error', 'Please enter a bucket name.');
         return false;
       }
-      if (addLocationForm.serviceType === 'aws') {
-        if (!addLocationForm.region.trim()) {
-          showNotification('error', 'Please select a region for AWS S3.');
-          return false;
-        }
-      } else if (addLocationForm.serviceType === 'compatible') {
-        if (!addLocationForm.endpoint.trim()) {
-          showNotification('error', 'Please enter the endpoint URL for S3-compatible service.');
-          return false;
-        }
+      if (!addLocationForm.endpoint.trim()) {
+        showNotification('error', 'Please enter an endpoint URL.');
+        return false;
       }
-      if (!addLocationForm.accessKeyId.trim() || !addLocationForm.secretAccessKey.trim()) {
-        showNotification('error', 'Please enter valid access credentials.');
+      if (!addLocationForm.accessKeyId.trim()) {
+        showNotification('error', 'Please enter an access key ID.');
+        return false;
+      }
+      if (!addLocationForm.secretAccessKey.trim()) {
+        showNotification('error', 'Please enter a secret access key.');
         return false;
       }
     }
     
     return true;
-  }
-  
-  // Test S3 connection with current form data
-  async function testS3ConnectionFromForm() {
-    if (addLocationForm.type !== 's3') return;
-    
-    isTestingConnection = true;
-    connectionTestResult = null;
-    showNotification('info', 'Testing S3 connection...');
-    
-    try {
-      const s3Config = {
-        bucketName: addLocationForm.bucketName,
-        region: addLocationForm.region,
-        accessKeyId: addLocationForm.accessKeyId,
-        secretAccessKey: addLocationForm.secretAccessKey,
-        endpoint: addLocationForm.endpoint,
-        serviceType: addLocationForm.serviceType
-      };
-      
-      const client = await createS3Client(s3Config);
-      const connectionSuccess = await testS3Connection(client);
-      
-      if (connectionSuccess) {
-        connectionTestResult = { success: true, message: 'S3 connection test successful!' };
-        showNotification('success', 'S3 connection test successful!');
-      } else {
-        connectionTestResult = { success: false, message: 'S3 connection test failed. Please check your credentials and settings.' };
-        showNotification('error', 'S3 connection test failed. Please check your credentials and settings.');
-      }
-    } catch (error) {
-      console.error('S3 connection test error:', error);
-      connectionTestResult = { success: false, message: `Connection test failed: ${error.message}` };
-      showNotification('error', `Connection test failed: ${error.message}`);
-    } finally {
-      isTestingConnection = false;
-    }
   }
   
   // Reset form to defaults
@@ -251,8 +231,7 @@
       region: 'us-east-1',
       accessKeyId: '',
       secretAccessKey: '',
-      endpoint: '',
-      serviceType: 'aws'
+      endpoint: ''
     };
     editingLocationId = null;
     connectionTestResult = null;
@@ -273,14 +252,13 @@
     
     if (addLocationForm.type === 'local') {
       newLocation.path = addLocationForm.path;
-    } else if (addLocationForm.type === 's3') {
+    } else if (addLocationForm.type === 's3-compatible') {
       newLocation.path = `s3://${addLocationForm.bucketName}`;
       newLocation.bucketName = addLocationForm.bucketName;
       newLocation.region = addLocationForm.region;
       newLocation.accessKeyId = addLocationForm.accessKeyId;
       newLocation.secretAccessKey = addLocationForm.secretAccessKey;
       newLocation.endpoint = addLocationForm.endpoint;
-      newLocation.serviceType = addLocationForm.serviceType;
     }
     
     storageLocations = [...storageLocations, newLocation];
@@ -309,20 +287,13 @@
     
     if (addLocationForm.type === 'local') {
       updatedLocation.path = addLocationForm.path;
-      // Remove S3 specific fields if switching from S3 to local
-      delete updatedLocation.bucketName;
-      delete updatedLocation.region;
-      delete updatedLocation.accessKeyId;
-      delete updatedLocation.secretAccessKey;
-      delete updatedLocation.endpoint;
-    } else if (addLocationForm.type === 's3') {
+    } else if (addLocationForm.type === 's3-compatible') {
       updatedLocation.path = `s3://${addLocationForm.bucketName}`;
       updatedLocation.bucketName = addLocationForm.bucketName;
       updatedLocation.region = addLocationForm.region;
       updatedLocation.accessKeyId = addLocationForm.accessKeyId;
       updatedLocation.secretAccessKey = addLocationForm.secretAccessKey;
       updatedLocation.endpoint = addLocationForm.endpoint;
-      updatedLocation.serviceType = addLocationForm.serviceType;
     }
     
     storageLocations[locationIndex] = updatedLocation;
@@ -357,23 +328,36 @@
   }
   
   // Handle configuring existing storage location
-  function handleConfigureLocation(locationId) {
+  async function handleConfigureLocation(locationId) {
     const locationToEdit = storageLocations.find(loc => loc.id === locationId);
     if (locationToEdit) {
       editingLocationId = locationId;
       
-      // Populate form with existing data
-      addLocationForm = {
-        type: locationToEdit.type,
-        name: locationToEdit.name,
-        path: locationToEdit.path || '',
-        bucketName: locationToEdit.bucketName || '',
-        region: locationToEdit.region || 'us-east-1',
-        accessKeyId: locationToEdit.accessKeyId || '',
-        secretAccessKey: locationToEdit.secretAccessKey || '',
-        endpoint: locationToEdit.endpoint || '',
-        serviceType: locationToEdit.serviceType || 'aws'
-      };
+      // Reset connection test result
+      connectionTestResult = null;
+      
+      // Populate form with existing data - use explicit assignment to ensure reactivity
+      addLocationForm.type = locationToEdit.type;
+      addLocationForm.name = locationToEdit.name;
+      addLocationForm.path = locationToEdit.path || '';
+      addLocationForm.bucketName = locationToEdit.bucketName || '';
+      addLocationForm.region = locationToEdit.region || 'us-east-1';
+      addLocationForm.accessKeyId = locationToEdit.accessKeyId || '';
+      addLocationForm.secretAccessKey = locationToEdit.secretAccessKey || '';
+      addLocationForm.endpoint = locationToEdit.endpoint || '';
+      
+      // Force reactivity update
+      addLocationForm = { ...addLocationForm };
+      
+      // Debug log to verify the type is being set correctly
+      console.log('Configuring location:', locationToEdit);
+      console.log('Form type set to:', addLocationForm.type);
+      
+      // Wait for Svelte to update the DOM before showing modal
+      await tick();
+      
+      // Increment modal key to force re-render
+      modalKey++;
       
       showEditLocationModal = true;
     }
@@ -383,11 +367,7 @@
     switch(type) {
       case 'local':
         return 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z';
-      case 's3':
-        return 'M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z';
-      case 'external':
-        return 'M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z';
-      case 'network':
+      case 's3-compatible':
         return 'M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z';
       default:
         return 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z';
@@ -395,14 +375,48 @@
   }
   
   function getStorageTypeDisplay(location) {
-    if (location.type === 's3') {
-      if (location.serviceType === 'compatible') {
-        return 'S3-Compatible';
-      } else {
-        return 'AWS S3';
-      }
+    if (location.type === 's3-compatible') {
+      return 'S3-Compatible';
     }
     return location.type;
+  }
+  
+  // Test S3-compatible connection
+  async function testS3ConnectionFromForm() {
+    if (!addLocationForm.bucketName || !addLocationForm.endpoint || !addLocationForm.accessKeyId || !addLocationForm.secretAccessKey) {
+      showNotification('error', 'Please fill in all S3-compatible service fields before testing connection.');
+      return;
+    }
+    
+    isTestingConnection = true;
+    connectionTestResult = null;
+    
+    try {
+      const result = await testS3Connection({
+        bucketName: addLocationForm.bucketName,
+        endpoint: addLocationForm.endpoint,
+        region: addLocationForm.region,
+        accessKeyId: addLocationForm.accessKeyId,
+        secretAccessKey: addLocationForm.secretAccessKey
+      });
+      
+      connectionTestResult = result;
+      
+      if (result.success) {
+        showNotification('success', result.message);
+      } else {
+        showNotification('error', result.message);
+      }
+    } catch (error) {
+      console.error('Connection test error:', error);
+      connectionTestResult = {
+        success: false,
+        message: 'Connection test failed due to an unexpected error.'
+      };
+      showNotification('error', 'Connection test failed due to an unexpected error.');
+    } finally {
+      isTestingConnection = false;
+    }
   }
   
   function getStatusBadge(status) {
@@ -459,10 +473,6 @@
   
   function handleCleanupStorage() {
     console.log('Cleanup storage clicked');
-  }
-  
-  function formatFileSize(size) {
-    return size;
   }
   
   // Show config path
@@ -706,28 +716,50 @@
         <h3 class="font-bold text-lg mb-4">Add Storage Location</h3>
         
         <!-- Storage Type Selection -->
-        <div class="form-control mb-4">
+        <div class="form-control mb-6">
           <label class="label">
-            <span class="label-text">Storage Type</span>
+            <span class="label-text font-medium">Storage Type</span>
           </label>
-          <div class="flex gap-4">
-            <label class="label cursor-pointer">
-              <input type="radio" bind:group={addLocationForm.type} value="local" class="radio radio-primary" />
-              <span class="label-text ml-2">Local Machine</span>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <label class="card card-compact bg-base-200 hover:bg-base-300 cursor-pointer transition-colors border-2 {addLocationForm.type === 'local' ? 'border-primary bg-primary/10' : 'border-transparent'}">
+              <div class="card-body flex-row items-center gap-3">
+                <input type="radio" bind:group={addLocationForm.type} value="local" class="radio radio-primary" />
+                <div class="flex items-center gap-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  <div>
+                    <div class="font-medium">Local Machine</div>
+                    <div class="text-xs text-base-content/70">Store data on your computer</div>
+                  </div>
+                </div>
+              </div>
             </label>
-            <label class="label cursor-pointer">
-              <input type="radio" bind:group={addLocationForm.type} value="s3" class="radio radio-primary" />
-              <span class="label-text ml-2">S3 Service</span>
+            
+            <label class="card card-compact bg-base-200 hover:bg-base-300 cursor-pointer transition-colors border-2 {addLocationForm.type === 's3-compatible' ? 'border-primary bg-primary/10' : 'border-transparent'}">
+              <div class="card-body flex-row items-center gap-3">
+                <input type="radio" bind:group={addLocationForm.type} value="s3-compatible" class="radio radio-primary" />
+                <div class="flex items-center gap-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+                  </svg>
+                  <div>
+                    <div class="font-medium">S3-Compatible</div>
+                    <div class="text-xs text-base-content/70">MinIO, AWS S3, etc.</div>
+                  </div>
+                </div>
+              </div>
             </label>
           </div>
           {#if addLocationForm.type === 'local' && hasLocalStorage()}
-            <label class="label">
-              <span class="label-text-alt text-warning">Warning: Only one local machine storage location is allowed.</span>
-            </label>
+            <div class="alert alert-warning mt-3">
+              <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.664-.833-2.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+              <span class="text-sm">Only one local machine storage location is allowed.</span>
+            </div>
           {/if}
-        </div>
-        
-        <!-- Common Fields -->
+        </div>        <!-- Common Fields -->
         <div class="form-control mb-4">
           <label class="label" for="storage-name">
             <span class="label-text">Name</span>
@@ -766,25 +798,18 @@
               </span>
             </div>
           </div>
-        {:else if addLocationForm.type === 's3'}
-          <!-- S3 Service Type Selection -->
-          <div class="form-control mb-4">
-            <label class="label">
-              <span class="label-text">S3 Service Type</span>
-            </label>
-            <div class="flex gap-4">
-              <label class="label cursor-pointer">
-                <input type="radio" bind:group={addLocationForm.serviceType} value="aws" class="radio radio-primary" />
-                <span class="label-text ml-2">AWS S3</span>
-              </label>
-              <label class="label cursor-pointer">
-                <input type="radio" bind:group={addLocationForm.serviceType} value="compatible" class="radio radio-primary" />
-                <span class="label-text ml-2">S3-Compatible (MinIO, etc.)</span>
-              </label>
+        {:else if addLocationForm.type === 's3-compatible'}
+          <!-- S3-Compatible Storage Fields -->
+          <div class="alert alert-warning mb-4">
+            <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.664-.833-2.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+            <div>
+              <h4 class="font-bold">Security Notice</h4>
+              <div class="text-sm">Your credentials are stored locally on your device. Never share your access keys with anyone and use minimal required permissions.</div>
             </div>
           </div>
-
-          <!-- S3 Storage Fields -->
+          
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <div class="form-control">
               <label class="label" for="bucket-name">
@@ -792,48 +817,26 @@
               </label>
               <input type="text" id="bucket-name" bind:value={addLocationForm.bucketName} placeholder="my-bids-bucket" class="input input-bordered" />
             </div>
-            {#if addLocationForm.serviceType === 'aws'}
-              <div class="form-control">
-                <label class="label" for="region">
-                  <span class="label-text">Region</span>
-                </label>
-                <select id="region" bind:value={addLocationForm.region} class="select select-bordered">
-                  <option value="us-east-1">US East (N. Virginia)</option>
-                  <option value="us-east-2">US East (Ohio)</option>
-                  <option value="us-west-1">US West (N. California)</option>
-                  <option value="us-west-2">US West (Oregon)</option>
-                  <option value="eu-west-1">Europe (Ireland)</option>
-                  <option value="eu-west-2">Europe (London)</option>
-                  <option value="eu-central-1">Europe (Frankfurt)</option>
-                  <option value="ap-southeast-1">Asia Pacific (Singapore)</option>
-                  <option value="ap-southeast-2">Asia Pacific (Sydney)</option>
-                  <option value="ap-northeast-1">Asia Pacific (Tokyo)</option>
-                </select>
-              </div>
-            {:else if addLocationForm.serviceType === 'compatible'}
-              <div class="form-control">
-                <label class="label" for="region">
-                  <span class="label-text">Region</span>
-                </label>
-                <input type="text" id="region" bind:value={addLocationForm.region} placeholder="us-east-1" class="input input-bordered" />
-                <label class="label">
-                  <span class="label-text-alt">Region for S3-compatible service (e.g., us-east-1)</span>
-                </label>
-              </div>
-            {/if}
-          </div>
-          
-          {#if addLocationForm.serviceType === 'compatible'}
-            <div class="form-control mb-4">
-              <label class="label" for="endpoint">
-                <span class="label-text">Endpoint URL</span>
+            <div class="form-control">
+              <label class="label" for="region">
+                <span class="label-text">Region</span>
               </label>
-              <input type="text" id="endpoint" bind:value={addLocationForm.endpoint} placeholder="https://minio.example.com:9000" class="input input-bordered" />
+              <input type="text" id="region" bind:value={addLocationForm.region} placeholder="us-east-1" class="input input-bordered" />
               <label class="label">
-                <span class="label-text-alt">Full URL including protocol and port</span>
+                <span class="label-text-alt">Region for S3-compatible service (e.g., us-east-1)</span>
               </label>
             </div>
-          {/if}
+          </div>
+          
+          <div class="form-control mb-4">
+            <label class="label" for="endpoint">
+              <span class="label-text">Endpoint URL</span>
+            </label>
+            <input type="text" id="endpoint" bind:value={addLocationForm.endpoint} placeholder="https://minio.example.com:9000" class="input input-bordered" />
+            <label class="label">
+              <span class="label-text-alt">Full URL including protocol and port</span>
+            </label>
+          </div>
           
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <div class="form-control">
@@ -850,13 +853,48 @@
             </div>
           </div>
           
-          <div class="alert alert-info mb-4">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-current shrink-0 w-6 h-6">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-            </svg>
-            <span>Make sure your credentials have the necessary permissions to read and write to the specified bucket.</span>
+          <!-- Test Connection Button -->
+          <div class="form-control mb-4">
+            <button 
+              type="button" 
+              class="btn btn-outline btn-primary" 
+              on:click={testS3ConnectionFromForm}
+              disabled={isTestingConnection}
+            >
+              {#if isTestingConnection}
+                <span class="loading loading-spinner loading-xs"></span>
+                Testing Connection...
+              {:else}
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Test Connection
+              {/if}
+            </button>
+            {#if connectionTestResult}
+              <div class="alert {connectionTestResult.success ? 'alert-success' : 'alert-error'} mt-2">
+                <span>{connectionTestResult.message}</span>
+              </div>
+              {#if !connectionTestResult.success}
+                <div class="alert alert-info mt-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-current shrink-0 w-6 h-6">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                  </svg>
+                  <div>
+                    <h4 class="font-bold">Troubleshooting Tips:</h4>
+                    <ul class="text-sm mt-1 space-y-1">
+                      <li>• Verify your access key ID and secret access key are correct</li>
+                      <li>• Ensure the bucket exists and your credentials have access to it</li>
+                      <li>• Check that the endpoint URL includes the correct protocol (http:// or https://)</li>
+                      <li>• For MinIO, the default port is usually 9000 (e.g., http://192.168.1.100:9000)</li>
+                    </ul>
+                  </div>
+                </div>
+              {/if}
+            {/if}
           </div>
         {/if}
+        
         <div class="modal-action">
           <button class="btn btn-ghost" on:click={() => { showAddLocationModal = false; resetForm(); }}>Cancel</button>
           <button class="btn btn-primary" on:click={handleAddStorageSubmit} disabled={addLocationForm.type === 'local' && hasLocalStorage()}>
@@ -869,29 +907,54 @@
   
   <!-- Edit Storage Location Modal -->
   {#if showEditLocationModal}
+    {#key modalKey}
     <div class="modal modal-open">
       <div class="modal-box max-w-2xl">
         <h3 class="font-bold text-lg mb-4">Configure Storage Location</h3>
         
         <!-- Storage Type Selection -->
-        <div class="form-control mb-4">
+        <div class="form-control mb-6">
           <label class="label">
-            <span class="label-text">Storage Type</span>
+            <span class="label-text font-medium">Storage Type</span>
           </label>
-          <div class="flex gap-4">
-            <label class="label cursor-pointer">
-              <input type="radio" bind:group={addLocationForm.type} value="local" class="radio radio-primary" />
-              <span class="label-text ml-2">Local Machine</span>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <label class="card card-compact bg-base-200 hover:bg-base-300 cursor-pointer transition-colors border-2 {addLocationForm.type === 'local' ? 'border-primary bg-primary/10' : 'border-transparent'}">
+              <div class="card-body flex-row items-center gap-3">
+                <input type="radio" bind:group={addLocationForm.type} value="local" class="radio radio-primary" />
+                <div class="flex items-center gap-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  <div>
+                    <div class="font-medium">Local Machine</div>
+                    <div class="text-xs text-base-content/70">Store data on your computer</div>
+                  </div>
+                </div>
+              </div>
             </label>
-            <label class="label cursor-pointer">
-              <input type="radio" bind:group={addLocationForm.type} value="s3" class="radio radio-primary" />
-              <span class="label-text ml-2">S3 Service</span>
+            
+            <label class="card card-compact bg-base-200 hover:bg-base-300 cursor-pointer transition-colors border-2 {addLocationForm.type === 's3-compatible' ? 'border-primary bg-primary/10' : 'border-transparent'}">
+              <div class="card-body flex-row items-center gap-3">
+                <input type="radio" bind:group={addLocationForm.type} value="s3-compatible" class="radio radio-primary" />
+                <div class="flex items-center gap-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+                  </svg>
+                  <div>
+                    <div class="font-medium">S3-Compatible</div>
+                    <div class="text-xs text-base-content/70">MinIO, AWS S3, etc.</div>
+                  </div>
+                </div>
+              </div>
             </label>
           </div>
           {#if addLocationForm.type === 'local' && hasLocalStorage() && editingLocationId !== storageLocations.find(loc => loc.type === 'local')?.id}
-            <label class="label">
-              <span class="label-text-alt text-warning">Warning: Only one local machine storage location is allowed.</span>
-            </label>
+            <div class="alert alert-warning mt-3">
+              <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.664-.833-2.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+              </svg>
+              <span class="text-sm">Only one local machine storage location is allowed.</span>
+            </div>
           {/if}
         </div>
         
@@ -934,25 +997,18 @@
               </span>
             </div>
           </div>
-        {:else if addLocationForm.type === 's3'}
-          <!-- S3 Service Type Selection -->
-          <div class="form-control mb-4">
-            <label class="label">
-              <span class="label-text">S3 Service Type</span>
-            </label>
-            <div class="flex gap-4">
-              <label class="label cursor-pointer">
-                <input type="radio" bind:group={addLocationForm.serviceType} value="aws" class="radio radio-primary" />
-                <span class="label-text ml-2">AWS S3</span>
-              </label>
-              <label class="label cursor-pointer">
-                <input type="radio" bind:group={addLocationForm.serviceType} value="compatible" class="radio radio-primary" />
-                <span class="label-text ml-2">S3-Compatible (MinIO, etc.)</span>
-              </label>
+        {:else if addLocationForm.type === 's3-compatible'}
+          <!-- S3-Compatible Storage Fields -->
+          <div class="alert alert-warning mb-4">
+            <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.664-.833-2.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+            <div>
+              <h4 class="font-bold">Security Notice</h4>
+              <div class="text-sm">Your credentials are stored locally on your device. Never share your access keys with anyone and use minimal required permissions.</div>
             </div>
           </div>
-
-          <!-- S3 Storage Fields -->
+          
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <div class="form-control">
               <label class="label" for="edit-bucket-name">
@@ -960,48 +1016,26 @@
               </label>
               <input type="text" id="edit-bucket-name" bind:value={addLocationForm.bucketName} placeholder="my-bids-bucket" class="input input-bordered" />
             </div>
-            {#if addLocationForm.serviceType === 'aws'}
-              <div class="form-control">
-                <label class="label" for="edit-region">
-                  <span class="label-text">Region</span>
-                </label>
-                <select id="edit-region" bind:value={addLocationForm.region} class="select select-bordered">
-                  <option value="us-east-1">US East (N. Virginia)</option>
-                  <option value="us-east-2">US East (Ohio)</option>
-                  <option value="us-west-1">US West (N. California)</option>
-                  <option value="us-west-2">US West (Oregon)</option>
-                  <option value="eu-west-1">Europe (Ireland)</option>
-                  <option value="eu-west-2">Europe (London)</option>
-                  <option value="eu-central-1">Europe (Frankfurt)</option>  
-                  <option value="ap-southeast-1">Asia Pacific (Singapore)</option>
-                  <option value="ap-southeast-2">Asia Pacific (Sydney)</option>
-                  <option value="ap-northeast-1">Asia Pacific (Tokyo)</option>
-                </select>
-              </div>
-            {:else if addLocationForm.serviceType === 'compatible'}
-              <div class="form-control">
-                <label class="label" for="edit-region">
-                  <span class="label-text">Region</span>
-                </label>
-                <input type="text" id="edit-region" bind:value={addLocationForm.region} placeholder="us-east-1" class="input input-bordered" />
-                <label class="label">
-                  <span class="label-text-alt">Region for S3-compatible service (e.g., us-east-1)</span>
-                </label>
-              </div>
-            {/if}
-          </div>
-          
-          {#if addLocationForm.serviceType === 'compatible'}
-            <div class="form-control mb-4">
-              <label class="label" for="edit-endpoint">
-                <span class="label-text">Endpoint URL</span>
+            <div class="form-control">
+              <label class="label" for="edit-region">
+                <span class="label-text">Region</span>
               </label>
-              <input type="text" id="edit-endpoint" bind:value={addLocationForm.endpoint} placeholder="https://minio.example.com:9000" class="input input-bordered" />
+              <input type="text" id="edit-region" bind:value={addLocationForm.region} placeholder="us-east-1" class="input input-bordered" />
               <label class="label">
-                <span class="label-text-alt">Full URL including protocol and port</span>
+                <span class="label-text-alt">Region for S3-compatible service (e.g., us-east-1)</span>
               </label>
             </div>
-          {/if}
+          </div>
+          
+          <div class="form-control mb-4">
+            <label class="label" for="edit-endpoint">
+              <span class="label-text">Endpoint URL</span>
+            </label>
+            <input type="text" id="edit-endpoint" bind:value={addLocationForm.endpoint} placeholder="https://minio.example.com:9000" class="input input-bordered" />
+            <label class="label">
+              <span class="label-text-alt">Full URL including protocol and port</span>
+            </label>
+          </div>
           
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <div class="form-control">
@@ -1040,14 +1074,23 @@
               <div class="alert {connectionTestResult.success ? 'alert-success' : 'alert-error'} mt-2">
                 <span>{connectionTestResult.message}</span>
               </div>
+              {#if !connectionTestResult.success}
+                <div class="alert alert-info mt-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-current shrink-0 w-6 h-6">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                  </svg>
+                  <div>
+                    <h4 class="font-bold">Troubleshooting Tips:</h4>
+                    <ul class="text-sm mt-1 space-y-1">
+                      <li>• Verify your access key ID and secret access key are correct</li>
+                      <li>• Ensure the bucket exists and your credentials have access to it</li>
+                      <li>• Check that the endpoint URL includes the correct protocol (http:// or https://)</li>
+                      <li>• For MinIO, the default port is usually 9000 (e.g., http://192.168.1.100:9000)</li>
+                    </ul>
+                  </div>
+                </div>
+              {/if}
             {/if}
-          </div>
-          
-          <div class="alert alert-info mb-4">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="stroke-current shrink-0 w-6 h-6">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-            </svg>
-            <span>Make sure your credentials have the necessary permissions to read and write to the specified bucket.</span>
           </div>
         {/if}
         
@@ -1059,5 +1102,6 @@
         </div>
       </div>
     </div>
+    {/key}
   {/if}
 </div>

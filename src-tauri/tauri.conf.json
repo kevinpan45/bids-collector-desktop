@@ -12,11 +12,14 @@
   "app": {
     "windows": [
       {
-        "title": "bids-collector",
-        "width": 800,
-        "height": 600,
+        "title": "BIDS Collector",
+        "width": 1200,
+        "height": 800,
+        "minWidth": 800,
+        "minHeight": 600,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "center": true
       }
     ],
     "security": {

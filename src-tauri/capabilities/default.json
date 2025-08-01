@@ -7,6 +7,7 @@
   ],
   "permissions": [
     "core:default",
+    "core:path:default",
     "dialog:allow-open",
     "dialog:default",
     "fs:allow-read-text-file",
@@ -14,6 +15,8 @@
     "fs:allow-create",
     "fs:allow-mkdir",
     "fs:allow-exists",
-    "fs:default"
+    "fs:default",
+    "fs:scope-appdata",
+    "fs:scope-appdata-recursive"
   ]
 }

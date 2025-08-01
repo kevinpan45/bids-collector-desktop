@@ -9,7 +9,7 @@ let tauriReadTextFile = null;
 let tauriWriteTextFile = null;
 let tauriMkdir = null;
 let tauriCreate = null;
-let tauriHomeDir = null;
+let tauriAppDataDir = null;
 
 // Initialize Tauri APIs
 async function initTauriAPIs() {
@@ -23,7 +23,7 @@ async function initTauriAPIs() {
       tauriWriteTextFile = fs.writeTextFile;
       tauriMkdir = fs.mkdir;
       tauriCreate = fs.create;
-      tauriHomeDir = path.homeDir;
+      tauriAppDataDir = path.appDataDir;
       
       return true;
     } catch (error) {
@@ -36,12 +36,12 @@ async function initTauriAPIs() {
 
 // Get the config directory path
 async function getConfigDir() {
-  if (tauriHomeDir) {
-    const homeDir = await tauriHomeDir();
-    return `${homeDir}/.bids-collector`;
+  if (tauriAppDataDir) {
+    const appDataDir = await tauriAppDataDir();
+    return `${appDataDir}/bids-collector`;
   }
   // Fallback for web environment
-  return '~/.bids-collector';
+  return 'localStorage';
 }
 
 // Ensure config directory exists
@@ -91,12 +91,13 @@ export async function saveConfig(module, data) {
     const filePath = `${configDir}/${module}.json`;
     const jsonData = JSON.stringify(data, null, 2);
     
+    console.log(`Attempting to save config to: ${filePath}`);
     await tauriWriteTextFile(filePath, jsonData);
-    console.log(`Configuration saved to: ${filePath}`);
+    console.log(`Configuration saved successfully to: ${filePath}`);
     
     return true;
   } catch (error) {
-    console.error(`Failed to save ${module} config:`, error);
+    console.error(`Failed to save ${module} config to filesystem:`, error.message || error);
     
     // Fallback to localStorage
     try {
@@ -127,6 +128,8 @@ export async function loadConfig(module, defaultConfig = {}) {
     const configDir = await getConfigDir();
     const filePath = `${configDir}/${module}.json`;
     
+    console.log(`Attempting to load config from: ${filePath}`);
+    
     // Check if file exists
     const exists = await tauriExists(filePath);
     if (!exists) {
@@ -137,11 +140,11 @@ export async function loadConfig(module, defaultConfig = {}) {
     // Read and parse config
     const jsonData = await tauriReadTextFile(filePath);
     const config = JSON.parse(jsonData);
-    console.log(`Configuration loaded from: ${filePath}`);
+    console.log(`Configuration loaded successfully from: ${filePath}`);
     
     return config;
   } catch (error) {
-    console.error(`Failed to load ${module} config:`, error);
+    console.error(`Failed to load ${module} config from filesystem:`, error.message || error);
     
     // Fallback to localStorage
     try {
@@ -200,8 +203,15 @@ export async function getConfigPath() {
     if (!tauriExists) {
       await initTauriAPIs();
     }
-    return await getConfigDir();
+    
+    if (tauriAppDataDir) {
+      const appDataDir = await tauriAppDataDir();
+      return `${appDataDir}/bids-collector`;
+    }
+    
+    return 'localStorage (browser storage)';
   } catch (error) {
-    return '~/.bids-collector (localStorage fallback)';
+    console.error('Failed to get config path:', error);
+    return 'localStorage (fallback)';
   }
 }

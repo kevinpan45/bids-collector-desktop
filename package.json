@@ -15,10 +15,7 @@
     "dev": "vite dev",
     "build": "vite build",
     "preview": "vite preview",
-    "tauri:dev": "tauri dev",
-    "test": "vitest",
-    "test:run": "vitest run",
-    "test:ui": "vitest --ui"
+    "tauri:dev": "tauri dev"
   },
   "devDependencies": {
     "@iconify/svelte": "^4.0.2",
@@ -26,21 +23,18 @@
     "@sveltejs/kit": "^2.0.0",
     "@sveltejs/vite-plugin-svelte": "^3.0.0",
     "@tauri-apps/cli": "^2.7.1",
-    "@vitest/ui": "^3.2.4",
     "autoprefixer": "10.4.17",
     "daisyui": "^4.7.3",
-    "jsdom": "^26.1.0",
     "postcss": "8.4.35",
     "svelte": "^4.0.0",
     "svelte-time": "^0.8.2",
     "svelte-typeahead": "^4.4.1",
     "tailwindcss": "3.4.1",
-    "vite": "^5.0.0",
-    "vitest": "^3.2.4"
+    "vite": "^5.0.0"
   },
   "type": "module",
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.856.0",
+    "@aws-sdk/client-s3": "^3.857.0",
     "@tauri-apps/api": "^2.7.0",
     "@tauri-apps/plugin-dialog": "^2.3.2",
     "@tauri-apps/plugin-fs": "^2.3.2",

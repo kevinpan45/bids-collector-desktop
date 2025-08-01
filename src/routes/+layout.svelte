@@ -72,7 +72,7 @@
   </div>
 </div>
 
-<style>
+<style lang="css">
   .sider-bar {
     pointer-events: auto;
     visibility: visible;
