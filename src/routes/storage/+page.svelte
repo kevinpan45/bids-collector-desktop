@@ -48,7 +48,7 @@
   
   // Security state
   let showSecurityWarning = false;
-  let securityWarning = getSecurityWarning();
+  let securityWarning = "Your credentials are stored locally on your device. Never share your access keys with anyone and use minimal required permissions.";
   let showCredentials = false; // Toggle for showing/hiding credentials
   
   let recentFiles = [
