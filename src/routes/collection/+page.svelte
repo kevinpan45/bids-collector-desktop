@@ -1,7 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import toast from 'svelte-french-toast';
-  import { getAllCollectionTasks, updateCollectionTask, deleteCollectionTask } from '$lib/collections.js';
+  import { getAllCollectionTasks, updateCollectionTask, deleteCollectionTask, getFullDownloadPath, startTaskDownload } from '$lib/collections.js';
   
   let collectionTasks = [];
   let loading = true;
@@ -92,22 +92,7 @@
   }
   
   function startTask(taskId) {
-    const taskIndex = collectionTasks.findIndex(task => task.id === taskId);
-    if (taskIndex === -1) return;
-    
-    const updates = {
-      status: 'downloading',
-      startedAt: new Date().toISOString()
-    };
-    
-    updateCollectionTask(taskId, updates).then(() => {
-      collectionTasks[taskIndex] = { ...collectionTasks[taskIndex], ...updates };
-      toast.success(`Task "${collectionTasks[taskIndex].name}" started`);
-      simulateDownload(taskId);
-    }).catch(error => {
-      console.error('Failed to start task:', error);
-      toast.error('Failed to start task');
-    });
+    startDownload(taskId);
   }
   
   function pauseTask(taskId) {
@@ -116,9 +101,9 @@
     
     const updates = { status: 'paused' };
     
-    updateCollectionTask(taskId, updates).then(() => {
+    updateCollectionTask(taskId, { ...updates }).then(() => {
       collectionTasks[taskIndex] = { ...collectionTasks[taskIndex], ...updates };
-      toast.info(`Task "${collectionTasks[taskIndex].name}" paused`);
+      toast(`Task "${collectionTasks[taskIndex].name}" paused`);
     }).catch(error => {
       console.error('Failed to pause task:', error);
       toast.error('Failed to pause task');
@@ -145,77 +130,61 @@
     const task = collectionTasks.find(t => t.id === taskId);
     if (!task) return;
     
-    if (confirm(`Are you sure you want to delete the task "${task.name}"?`)) {
-      deleteCollectionTask(taskId).then(() => {
-        collectionTasks = collectionTasks.filter(t => t.id !== taskId);
-        toast.success(`Task "${task.name}" deleted`);
-      }).catch(error => {
-        console.error('Failed to delete task:', error);
-        toast.error('Failed to delete task');
-      });
-    }
+    deleteCollectionTask(taskId).then(() => {
+      collectionTasks = collectionTasks.filter(t => t.id !== taskId);
+      toast.success(`Task "${task.name}" deleted`);
+    }).catch(error => {
+      console.error('Failed to delete task:', error);
+      toast.error('Failed to delete task');
+    });
   }
   
-  // Simulate download progress
-  function simulateDownload(taskId) {
-    const taskIndex = collectionTasks.findIndex(task => task.id === taskId);
-    if (taskIndex === -1) return;
-    
-    const task = collectionTasks[taskIndex];
-    if (task.status !== 'downloading') return;
-    
-    const totalSize = 1000 + Math.random() * 9000; // Random size between 1-10GB
-    const currentProgress = task.progress || 0;
-    
-    if (currentProgress >= 100) {
-      // Complete the task
-      const updates = {
-        status: 'completed',
-        progress: 100,
-        completedAt: new Date().toISOString(),
-        totalSize: totalSize,
-        downloadedSize: totalSize
+  // Start actual download for a task
+  async function startDownload(taskId) {
+    try {
+      const taskIndex = collectionTasks.findIndex(task => task.id === taskId);
+      if (taskIndex === -1) return;
+      
+      const task = collectionTasks[taskIndex];
+      console.log(`Starting actual download for task: ${task.name}`);
+      
+      // Update UI to show download starting
+      collectionTasks[taskIndex] = { 
+        ...task, 
+        status: 'downloading',
+        startedAt: new Date().toISOString(),
+        progress: 0,
+        errorMessage: null
       };
       
-      updateCollectionTask(taskId, updates).then(() => {
-        collectionTasks[taskIndex] = { ...task, ...updates };
-        toast.success(`Task "${task.name}" completed successfully`);
-      });
-      return;
-    }
-    
-    // Update progress
-    const progressIncrement = 2 + Math.random() * 8; // 2-10% increment
-    const newProgress = Math.min(100, currentProgress + progressIncrement);
-    
-    const updates = {
-      progress: newProgress,
-      totalSize: totalSize,
-      downloadedSize: (totalSize * newProgress) / 100,
-      speed: 10 + Math.random() * 90 // Random speed 10-100 MB/s
-    };
-    
-    // Randomly simulate failures (5% chance)
-    if (Math.random() < 0.05 && newProgress > 20) {
-      updates.status = 'failed';
-      updates.errorMessage = 'Connection timeout - please retry';
+      toast.success(`Starting download: ${task.name}`);
       
-      updateCollectionTask(taskId, updates).then(() => {
-        collectionTasks[taskIndex] = { ...task, ...updates };
-        toast.error(`Task "${task.name}" failed`);
-      });
-      return;
-    }
-    
-    // Update task
-    updateCollectionTask(taskId, updates).then(() => {
-      collectionTasks[taskIndex] = { ...task, ...updates };
+      // Start the actual download using rclone
+      const success = await startTaskDownload(taskId);
       
-      // Continue simulation
-      if (newProgress < 100) {
-        setTimeout(() => simulateDownload(taskId), 1000 + Math.random() * 2000);
+      if (success) {
+        console.log(`Download completed successfully for task: ${task.name}`);
+      } else {
+        console.error(`Download failed for task: ${task.name}`);
       }
-    });
+      
+      // Refresh tasks to get updated status
+      await loadCollectionTasks();
+      
+    } catch (error) {
+      console.error('Failed to start download:', error);
+      toast.error(`Failed to start download: ${error.message}`);
+      
+      // Update task status to failed
+      const taskIndex = collectionTasks.findIndex(task => task.id === taskId);
+      if (taskIndex !== -1) {
+        collectionTasks[taskIndex] = { 
+          ...collectionTasks[taskIndex], 
+          status: 'failed',
+          errorMessage: error.message
+        };
+      }
+    }
   }
   
   function retryTask(taskId) {
@@ -223,17 +192,17 @@
     if (taskIndex === -1) return;
     
     const updates = {
-      status: 'downloading',
+      status: 'pending',
       progress: 0,
       errorMessage: null,
-      startedAt: new Date().toISOString(),
+      startedAt: null,
       completedAt: null
     };
     
     updateCollectionTask(taskId, updates).then(() => {
       collectionTasks[taskIndex] = { ...collectionTasks[taskIndex], ...updates };
-      toast.info(`Task "${collectionTasks[taskIndex].name}" restarted`);
-      simulateDownload(taskId);
+      toast(`Task "${collectionTasks[taskIndex].name}" reset to pending`);
+      // Don't auto-start, let user manually start when ready
     }).catch(error => {
       console.error('Failed to retry task:', error);
       toast.error('Failed to retry task');
@@ -246,6 +215,14 @@
     const k = 1024;
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + units[i];
+  }
+  
+  function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(() => {
+      toast.success('Path copied to clipboard');
+    }).catch(() => {
+      toast.error('Failed to copy to clipboard');
+    });
   }
 </script>
 
@@ -261,6 +238,22 @@
         <h1 class="text-3xl font-bold mb-2">Collection Tasks</h1>
         <p class="text-base-content/60">Track and manage your dataset download tasks</p>
       </div>
+      <div class="flex gap-2">
+        <button 
+          class="btn btn-outline btn-sm" 
+          on:click={loadCollectionTasks}
+          disabled={loading}
+        >
+          {#if loading}
+            <span class="loading loading-spinner loading-xs"></span>
+          {:else}
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          {/if}
+          Refresh
+        </button>
+      </div>
     </div>
   </div>
   
@@ -269,10 +262,10 @@
     <div class="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
       <!-- Status Filter -->
       <div class="form-control">
-        <label class="label">
+        <label class="label" for="status-filter">
           <span class="label-text">Filter by status</span>
         </label>
-        <select class="select select-bordered select-sm w-40" bind:value={statusFilter}>
+        <select id="status-filter" class="select select-bordered select-sm w-40" bind:value={statusFilter}>
           <option value="all">All Tasks</option>
           <option value="pending">Pending</option>
           <option value="downloading">Downloading</option>
@@ -284,11 +277,11 @@
       
       <!-- Sort Options -->
       <div class="form-control">
-        <label class="label">
+        <label class="label" for="sort-by">
           <span class="label-text">Sort by</span>
         </label>
         <div class="join">
-          <select class="join-item select select-bordered select-sm" bind:value={sortBy}>
+          <select id="sort-by" class="join-item select select-bordered select-sm" bind:value={sortBy}>
             <option value="created">Created</option>
             <option value="name">Name</option>
             <option value="status">Status</option>
@@ -389,7 +382,11 @@
                   {#if task.status === 'failed'}
                     <li><button type="button" on:click={() => retryTask(task.id)}>Retry Task</button></li>
                   {/if}
-                  <li><button type="button" class="text-error" on:click={() => deleteTask(task.id)}>Delete Task</button></li>
+                  <li>
+                    <button type="button" class="text-error" on:click={() => deleteTask(task.id)}>
+                      Delete Task
+                    </button>
+                  </li>
                 </ul>
               </div>
             </div>
@@ -428,12 +425,35 @@
             
             <!-- Storage Locations -->
             <div class="mb-4">
-              <h4 class="font-semibold text-sm mb-2">Storage Locations:</h4>
-              <div class="flex flex-wrap gap-2">
+              <h4 class="font-semibold text-sm mb-2">Download Paths:</h4>
+              <div class="space-y-2">
                 {#each task.storageLocations as location}
-                  <span class="badge badge-outline badge-sm">
-                    {location.type === 'local' ? '📁' : '☁️'} {location.name}
-                  </span>
+                  {@const fullPath = getFullDownloadPath(task, location)}
+                  <div class="border border-base-300 rounded-lg p-3 bg-base-50">
+                    <div class="flex items-center justify-between gap-2">
+                      <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 mb-1">
+                          <span class="badge badge-outline badge-sm">
+                            {location.type === 'local' ? '📁' : '☁️'} {location.name}
+                          </span>
+                        </div>
+                        <div class="text-xs text-base-content/60 font-mono break-all">
+                          <span class="font-semibold">Full Path:</span> {fullPath}
+                        </div>
+                      </div>
+                      <div class="flex gap-1">
+                        <button 
+                          class="btn btn-ghost btn-xs"
+                          on:click={() => copyToClipboard(fullPath)}
+                          title="Copy path to clipboard"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 {/each}
               </div>
             </div>

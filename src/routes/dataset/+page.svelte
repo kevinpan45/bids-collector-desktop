@@ -3,7 +3,7 @@
   import axios from 'axios';
   import toast from 'svelte-french-toast';
   import { loadConfig } from '$lib/storage.js';
-  import { createCollectionTask } from '$lib/collections.js';
+  import { createCollectionTask, generateDownloadPath } from '$lib/collections.js';
   
   let datasets = [];
   let loading = true;
@@ -22,6 +22,7 @@
   let storageLocations = [];
   let selectedLocationIds = []; // Changed to array for multiple selections
   let isDownloading = false;
+  let downloadPathPreview = '';
   
   $: filteredDatasets = datasets;
   
@@ -125,16 +126,26 @@
     // Navigate to dataset detail view
   }
   
-  function handleDownloadDataset(dataset) {
+  async function handleDownloadDataset(dataset) {
     selectedDataset = dataset;
     showDownloadModal = true;
-    console.log('Download dataset:', dataset.name);
+    
+    // Generate download path preview
+    try {
+      downloadPathPreview = await generateDownloadPath(dataset.id, dataset.version, dataset.provider, dataset.doi);
+    } catch (error) {
+      console.error('Failed to generate download path preview:', error);
+      downloadPathPreview = 'Error generating path';
+    }
+    
+    console.log('Download dataset:', dataset.name, '-> Path:', downloadPathPreview);
   }
   
   function closeDownloadModal() {
     showDownloadModal = false;
     selectedDataset = null;
     selectedLocationIds = [];
+    downloadPathPreview = '';
   }
   
   async function startDownload() {
@@ -491,6 +502,33 @@
           <span>ID: {selectedDataset.id}</span>
         </div>
       </div>
+      
+      <!-- Download Path Preview -->
+      {#if downloadPathPreview}
+        <div class="bg-primary/10 border border-primary/20 rounded-lg p-4 mb-6">
+          <div class="flex items-center gap-2 mb-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2-2V7z" />
+            </svg>
+            <span class="font-semibold text-primary">Download Target Folder</span>
+          </div>
+          <div class="text-sm text-base-content/80 mb-2">
+            The dataset will be downloaded to the following folder:
+          </div>
+          <code class="block bg-base-100 border rounded px-3 py-2 text-sm font-mono break-all">
+            {downloadPathPreview}
+          </code>
+          <div class="text-xs text-base-content/60 mt-2">
+            {#if selectedDataset?.doi}
+              📌 DOI-based folder: {selectedDataset.doi}
+            {:else if selectedDataset?.provider?.toLowerCase() === 'openneuro'}
+              📌 OpenNeuro format: ds{selectedDataset.id}_v{selectedDataset.version}
+            {:else}
+              📌 Standard format: {selectedDataset?.id}_v{selectedDataset?.version}
+            {/if}
+          </div>
+        </div>
+      {/if}
       
       {#if storageLocations.length === 0}
         <!-- No Storage Locations -->

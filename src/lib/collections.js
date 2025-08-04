@@ -4,6 +4,80 @@
  */
 
 import { loadConfig, saveConfig } from './storage.js';
+import { downloadDatasetWithS3 } from './s3Client.js';
+
+/**
+ * Generate download path based on dataset properties, using full DOI as folder name
+ * @param {string} datasetId - Dataset ID 
+ * @param {string} version - Dataset version
+ * @param {string} provider - Dataset provider
+ * @param {string} doi - Dataset DOI
+ * @returns {Promise<string>} The generated download path
+ */
+export async function generateDownloadPath(datasetId, version, provider, doi) {
+  // Use full DOI as the folder name if available
+  if (doi) {
+    // Sanitize DOI for use as folder name
+    // Remove common prefixes and characters that are invalid in folder names
+    let sanitizedDoi = doi
+      .replace(/^(doi:|https?:\/\/(dx\.)?doi\.org\/)/i, '') // Remove DOI prefixes
+      .replace(/[<>:"/\\|?*]/g, '_') // Replace invalid filename characters
+      .replace(/\s+/g, '_') // Replace spaces with underscores
+      .replace(/_{2,}/g, '_') // Replace multiple underscores with single
+      .replace(/^_|_$/g, ''); // Remove leading/trailing underscores
+    
+    if (sanitizedDoi) {
+      return sanitizedDoi;
+    }
+  }
+  
+  // Fallback to original format if DOI is not available or invalid
+  if (provider?.toLowerCase() === 'openneuro') {
+    return `ds${datasetId}_v${version}`;
+  } else {
+    return `${datasetId}_v${version}`;
+  }
+}
+
+/**
+ * Get the full download path for a task and storage location
+ * @param {Object} task - The collection task
+ * @param {Object} storageLocation - The storage location
+ * @returns {string} The full download path
+ */
+export function getFullDownloadPath(task, storageLocation) {
+  if (!task || !storageLocation) return '';
+  
+  // Regenerate download path using DOI if available (for backwards compatibility)
+  let relativePath = task.downloadPath || '';
+  
+  // If task has DOI but downloadPath doesn't look like a DOI-based path, regenerate it
+  if (task.datasetDoi && (!relativePath.includes('.') || relativePath.startsWith('ds'))) {
+    // Regenerate using DOI
+    let sanitizedDoi = task.datasetDoi
+      .replace(/^(doi:|https?:\/\/(dx\.)?doi\.org\/)/i, '') // Remove DOI prefixes
+      .replace(/[<>:"/\\|?*]/g, '_') // Replace invalid filename characters
+      .replace(/\s+/g, '_') // Replace spaces with underscores
+      .replace(/_{2,}/g, '_') // Replace multiple underscores with single
+      .replace(/^_|_$/g, ''); // Remove leading/trailing underscores
+    
+    if (sanitizedDoi) {
+      relativePath = sanitizedDoi;
+    }
+  }
+  
+  if (storageLocation.type === 'local') {
+    // For local storage, combine the base path with the download path
+    const basePath = storageLocation.path || '';
+    return basePath ? `${basePath}/${relativePath}` : relativePath;
+  } else if (storageLocation.type === 's3-compatible') {
+    // For S3, show bucket/path format
+    const bucketName = storageLocation.bucketName || storageLocation.path?.replace('s3://', '') || '';
+    return `s3://${bucketName}/${relativePath}`;
+  }
+  
+  return relativePath;
+}
 
 /**
  * Create a new collection task for dataset download
@@ -12,6 +86,9 @@ import { loadConfig, saveConfig } from './storage.js';
  * @returns {Object} The created task
  */
 export async function createCollectionTask(dataset, storageLocations) {
+  // Generate the download path using DOI
+  const downloadPath = await generateDownloadPath(dataset.id, dataset.version, dataset.provider, dataset.doi);
+  
   const newTask = {
     id: `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     name: `Download: ${dataset.name}`,
@@ -20,6 +97,8 @@ export async function createCollectionTask(dataset, storageLocations) {
     datasetSize: dataset.size,
     datasetDoi: dataset.doi,
     datasetProvider: dataset.provider,
+    datasetVersion: dataset.version,
+    downloadPath: downloadPath,
     storageLocations: storageLocations.map(location => ({
       id: location.id,
       name: location.name,
@@ -48,7 +127,7 @@ export async function createCollectionTask(dataset, storageLocations) {
     // Save updated tasks
     await saveConfig('collections', { tasks });
     
-    console.log(`Created collection task: ${newTask.name}`);
+    console.log(`Created collection task: ${newTask.name} -> ${downloadPath}`);
     return newTask;
   } catch (error) {
     console.error('Failed to create collection task:', error);
@@ -116,6 +195,119 @@ export async function deleteCollectionTask(taskId) {
     return true;
   } catch (error) {
     console.error('Failed to delete collection task:', error);
+    throw error;
+  }
+}
+
+/**
+ * Start actual download for a collection task using AWS S3 client
+ * @param {string} taskId - The task ID to start downloading
+ * @returns {Promise<boolean>} Success status
+ */
+export async function startTaskDownload(taskId) {
+  try {
+    const config = await loadConfig('collections', { tasks: [] });
+    const tasks = config.tasks || [];
+    
+    const task = tasks.find(t => t.id === taskId);
+    if (!task) {
+      throw new Error(`Task with ID ${taskId} not found`);
+    }
+    
+    if (task.status !== 'pending') {
+      throw new Error(`Task ${taskId} is not in pending status (current: ${task.status})`);
+    }
+    
+    console.log(`Starting download for task: ${task.name}`);
+    console.log(`Task provider: ${task.datasetProvider}`);
+    console.log(`Task storage locations:`, task.storageLocations);
+    
+    // Progress callback function
+    const progressCallback = async (updates) => {
+      await updateCollectionTask(taskId, updates);
+    };
+    
+    // Load storage configuration to find source and destination locations
+    console.log('Loading storage configuration...');
+    const storageConfig = await loadConfig('storage', { storageLocations: [] });
+    console.log('Raw storage config:', storageConfig);
+    
+    const storageLocations = storageConfig?.storageLocations || [];
+    
+    console.log(`Loaded storage locations:`, storageLocations);
+    console.log(`Storage locations count: ${storageLocations.length}`);
+    
+    if (storageLocations.length === 0) {
+      console.error('No storage locations found in config. Raw config:', JSON.stringify(storageConfig, null, 2));
+      throw new Error('No storage locations configured. Please configure storage locations first.');
+    }
+    
+    // Determine source S3 configuration based on dataset provider
+    let sourceS3Config = null;
+    
+    if (task.datasetProvider?.toLowerCase() === 'openneuro') {
+      sourceS3Config = {
+        endpoint: 'https://s3.amazonaws.com',
+        region: 'us-east-1',
+        bucketName: 'openneuro.org',
+        // OpenNeuro S3 bucket is public, use anonymous access (equivalent to --no-sign-request)
+        anonymous: true,
+        forcePathStyle: false
+      };
+      console.log(`Using OpenNeuro S3 source: s3://openneuro.org/${task.downloadPath}`);
+    } else {
+      throw new Error(`Unsupported dataset provider: ${task.datasetProvider}. Currently only OpenNeuro is supported.`);
+    }
+    
+    // Start downloads for each destination storage location
+    const downloadPromises = task.storageLocations.map(async (destLocationInfo) => {
+      if (destLocationInfo.type === 'local') {
+        // Find the full destination location config
+        const destLocation = storageLocations.find(loc => loc.id === destLocationInfo.id);
+        if (!destLocation) {
+          throw new Error(`Destination location not found: ${destLocationInfo.name}`);
+        }
+        
+        return await downloadDatasetWithS3(task, sourceS3Config, destLocation, progressCallback);
+      } else if (destLocationInfo.type === 's3-compatible') {
+        // Find the full destination S3 location config
+        const destLocation = storageLocations.find(loc => loc.id === destLocationInfo.id);
+        if (!destLocation) {
+          throw new Error(`Destination location not found: ${destLocationInfo.name}`);
+        }
+        
+        // TODO: Implement S3-to-S3 copy functionality
+        throw new Error(`S3-to-S3 copy not yet implemented. Destination: ${destLocationInfo.name}`);
+      } else {
+        throw new Error(`Unsupported destination type: ${destLocationInfo.type}`);
+      }
+    });
+    
+    // Wait for all downloads to complete
+    const results = await Promise.all(downloadPromises);
+    const allSuccessful = results.every(result => result === true);
+    
+    if (allSuccessful) {
+      console.log(`All downloads completed successfully for task: ${task.name}`);
+      return true;
+    } else {
+      console.error(`Some downloads failed for task: ${task.name}`);
+      return false;
+    }
+    
+  } catch (error) {
+    console.error('Failed to start task download:', error);
+    
+    // Update task with error status
+    try {
+      await updateCollectionTask(taskId, {
+        status: 'failed',
+        errorMessage: error.message
+      });
+    } catch (updateError) {
+      console.error('Failed to update task with error status:', updateError);
+    }
+    
     throw error;
   }
 }

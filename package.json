@@ -35,9 +35,12 @@
   "type": "module",
   "dependencies": {
     "@aws-sdk/client-s3": "^3.857.0",
+    "@aws-sdk/s3-request-presigner": "^3.859.0",
+    "@smithy/signature-v4": "^5.1.2",
     "@tauri-apps/api": "^2.7.0",
     "@tauri-apps/plugin-dialog": "^2.3.2",
     "@tauri-apps/plugin-fs": "^2.3.2",
+    "@tauri-apps/plugin-http": "^2.5.1",
     "axios": "1.9.0",
     "svelte-french-toast": "1.2.0"
   }

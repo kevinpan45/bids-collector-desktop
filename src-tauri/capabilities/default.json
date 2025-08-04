@@ -17,6 +17,17 @@
     "fs:allow-exists",
     "fs:default",
     "fs:scope-appdata",
-    "fs:scope-appdata-recursive"
-  ]
+    "fs:scope-appdata-recursive",
+    "http:default",
+    "http:allow-fetch",
+    "http:allow-fetch-send",
+    "http:allow-fetch-read-body"
+  ],
+  "scopes": {
+    "http": {
+      "allow": [
+        "https://openneuro.org.s3.amazonaws.com/*"
+      ]
+    }
+  }
 }
