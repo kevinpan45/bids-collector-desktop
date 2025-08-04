@@ -159,7 +159,7 @@
       
       toast.success(`Starting download: ${task.name}`);
       
-      // Start the actual download using rclone
+      // Start the actual download
       const success = await startTaskDownload(taskId);
       
       if (success) {
