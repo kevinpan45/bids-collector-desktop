@@ -22,9 +22,8 @@ export function createS3Client(config) {
 
   // Handle credentials based on configuration
   if (config.anonymous || (!config.accessKeyId && !config.secretAccessKey)) {
-    // For anonymous access, return null to indicate we should use direct HTTP requests
-    console.log('Using anonymous S3 access via direct HTTP');
-    return null;
+    // For anonymous access, don't set credentials (AWS SDK will use unsigned requests)
+    console.log('Using anonymous S3 access via AWS SDK');
   } else if (config.accessKeyId && config.secretAccessKey) {
     // Use provided credentials for private buckets
     clientConfig.credentials = {
@@ -141,12 +140,7 @@ export async function downloadDatasetWithS3(task, sourceConfig, destLocation, pr
     
     const s3Client = createClientFromLocation(sourceConfig);
     
-    if (s3Client === null) {
-      // Use direct HTTP requests for anonymous access (e.g., OpenNeuro)
-      return await downloadWithDirectHttp(task, sourceConfig, destLocation, progressCallback);
-    }
-    
-    // Use AWS SDK for authenticated access
+    // Always use AWS S3 SDK client for both authenticated and anonymous access
     return await downloadWithS3Client(task, sourceConfig, destLocation, progressCallback, s3Client);
     
   } catch (error) {
