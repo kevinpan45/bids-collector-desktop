@@ -22,8 +22,13 @@ export function createS3Client(config) {
 
   // Handle credentials based on configuration
   if (config.anonymous || (!config.accessKeyId && !config.secretAccessKey)) {
-    // For anonymous access, don't set credentials (AWS SDK will use unsigned requests)
-    console.log('Using anonymous S3 access via AWS SDK');
+    // For anonymous access, use anonymous credentials (equivalent to --no-sign-request)
+    console.log('Using anonymous S3 access (no-sign-request mode)');
+    clientConfig.credentials = () => Promise.resolve({
+      accessKeyId: '',
+      secretAccessKey: '',
+      sessionToken: ''
+    });
   } else if (config.accessKeyId && config.secretAccessKey) {
     // Use provided credentials for private buckets
     clientConfig.credentials = {
@@ -275,7 +280,7 @@ async function downloadWithS3Client(task, sourceConfig, destLocation, progressCa
  * @param {string} path - The download path (could be DOI-based or accession)
  * @returns {string} The accession number (e.g., ds006521)
  */
-function extractOpenNeuroAccession(path) {
+export function extractOpenNeuroAccession(path) {
   // If path already looks like an accession (ds followed by numbers), return as-is
   if (/^ds\d+$/i.test(path)) {
     return path.toLowerCase();
