@@ -4,7 +4,7 @@
  */
 
 import { loadConfig, saveConfig } from './storage.js';
-import { downloadDatasetWithS3 } from './s3Client.js';
+import { startBackgroundDownload, isTaskRunningInBackground } from './backgroundDownloads.js';
 
 /**
  * Generate download path based on dataset properties, using full DOI as folder name
@@ -200,7 +200,7 @@ export async function deleteCollectionTask(taskId) {
 }
 
 /**
- * Start actual download for a collection task using AWS S3 client
+ * Start actual download for a collection task using background processing
  * @param {string} taskId - The task ID to start downloading
  * @returns {Promise<boolean>} Success status
  */
@@ -214,18 +214,20 @@ export async function startTaskDownload(taskId) {
       throw new Error(`Task with ID ${taskId} not found`);
     }
     
-    if (task.status !== 'pending') {
-      throw new Error(`Task ${taskId} is not in pending status (current: ${task.status})`);
+    // Check if task is already running in background
+    const isRunning = await isTaskRunningInBackground(taskId);
+    if (isRunning) {
+      console.log(`Task ${taskId} is already running in background`);
+      return true;
     }
     
-    console.log(`Starting download for task: ${task.name}`);
+    if (task.status !== 'pending' && task.status !== 'failed') {
+      throw new Error(`Task ${taskId} is not in pending or failed status (current: ${task.status})`);
+    }
+    
+    console.log(`Starting background download for task: ${task.name}`);
     console.log(`Task provider: ${task.datasetProvider}`);
     console.log(`Task storage locations:`, task.storageLocations);
-    
-    // Progress callback function
-    const progressCallback = async (updates) => {
-      await updateCollectionTask(taskId, updates);
-    };
     
     // Load storage configuration to find source and destination locations
     console.log('Loading storage configuration...');
@@ -259,41 +261,32 @@ export async function startTaskDownload(taskId) {
       throw new Error(`Unsupported dataset provider: ${task.datasetProvider}. Currently only OpenNeuro is supported.`);
     }
     
-    // Start downloads for each destination storage location
-    const downloadPromises = task.storageLocations.map(async (destLocationInfo) => {
-      if (destLocationInfo.type === 'local') {
-        // Find the full destination location config
+    // Prepare task data for background download
+    const taskData = {
+      task: task,
+      sourceS3Config: sourceS3Config,
+      storageLocations: task.storageLocations.map(destLocationInfo => {
         const destLocation = storageLocations.find(loc => loc.id === destLocationInfo.id);
         if (!destLocation) {
           throw new Error(`Destination location not found: ${destLocationInfo.name}`);
         }
-        
-        return await downloadDatasetWithS3(task, sourceS3Config, destLocation, progressCallback);
-      } else if (destLocationInfo.type === 's3-compatible') {
-        // Find the full destination S3 location config
-        const destLocation = storageLocations.find(loc => loc.id === destLocationInfo.id);
-        if (!destLocation) {
-          throw new Error(`Destination location not found: ${destLocationInfo.name}`);
-        }
-        
-        // TODO: Implement S3-to-S3 copy functionality
-        throw new Error(`S3-to-S3 copy not yet implemented. Destination: ${destLocationInfo.name}`);
-      } else {
-        throw new Error(`Unsupported destination type: ${destLocationInfo.type}`);
-      }
+        return destLocation;
+      })
+    };
+    
+    // Update task status to indicate it's starting
+    await updateCollectionTask(taskId, {
+      status: 'downloading',
+      startedAt: new Date().toISOString(),
+      progress: 0,
+      errorMessage: null
     });
     
-    // Wait for all downloads to complete
-    const results = await Promise.all(downloadPromises);
-    const allSuccessful = results.every(result => result === true);
+    // Start the background download
+    await startBackgroundDownload(taskId, taskData);
     
-    if (allSuccessful) {
-      console.log(`All downloads completed successfully for task: ${task.name}`);
-      return true;
-    } else {
-      console.error(`Some downloads failed for task: ${task.name}`);
-      return false;
-    }
+    console.log(`Background download started successfully for task: ${task.name}`);
+    return true;
     
   } catch (error) {
     console.error('Failed to start task download:', error);

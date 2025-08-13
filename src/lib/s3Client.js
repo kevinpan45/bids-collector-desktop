@@ -2,9 +2,10 @@ import { S3Client, HeadBucketCommand, ListObjectsV2Command, GetObjectCommand } f
 import { writeFile, mkdir } from '@tauri-apps/plugin-fs';
 import { join } from '@tauri-apps/api/path';
 import { fetch } from '@tauri-apps/plugin-http';
+import { getS3Config, getProxyConfig } from './settings.js';
 
 /**
- * Create S3 client for S3-compatible services
+ * Create S3 client for S3-compatible services with proxy support
  * @param {Object} config - S3 configuration
  * @param {string} config.endpoint - S3-compatible endpoint URL
  * @param {string} config.region - Region (default: us-east-1)
@@ -15,9 +16,15 @@ import { fetch } from '@tauri-apps/plugin-http';
  * @returns {S3Client} Configured S3 client
  */
 export function createS3Client(config) {
+  // Load settings from storage
+  const s3Settings = getS3Config();
+  const proxyConfig = getProxyConfig();
+  
   const clientConfig = {
-    region: config.region || 'us-east-1',
+    region: config.region || s3Settings.region || 'us-east-1',
     forcePathStyle: config.forcePathStyle !== false, // Default to true for S3-compatible services
+    requestTimeout: s3Settings.requestTimeout || 30000,
+    maxRetries: s3Settings.maxRetries || 3
   };
 
   // Handle credentials based on configuration
@@ -40,6 +47,44 @@ export function createS3Client(config) {
   // Add endpoint for S3-compatible services (omit for AWS S3)
   if (config.endpoint && config.endpoint !== 'https://s3.amazonaws.com') {
     clientConfig.endpoint = config.endpoint;
+  } else if (s3Settings.endpoint) {
+    clientConfig.endpoint = s3Settings.endpoint;
+  }
+  
+  // Apply force path style setting
+  if (s3Settings.forcePathStyle !== undefined) {
+    clientConfig.forcePathStyle = s3Settings.forcePathStyle;
+  }
+
+  // Add proxy configuration if enabled
+  if (proxyConfig) {
+    console.log('Configuring proxy settings for S3 client');
+    
+    // Configure HTTP proxy if available
+    if (proxyConfig.http) {
+      console.log(`Using HTTP proxy: ${proxyConfig.http.protocol}://${proxyConfig.http.host}:${proxyConfig.http.port}`);
+      
+      // Configure HTTP request handler with proxy
+      clientConfig.httpProxy = `${proxyConfig.http.protocol}://${proxyConfig.http.host}:${proxyConfig.http.port}`;
+      
+      // Add proxy authentication if provided
+      if (proxyConfig.http.auth) {
+        clientConfig.httpProxy = `${proxyConfig.http.protocol}://${proxyConfig.http.auth.username}:${proxyConfig.http.auth.password}@${proxyConfig.http.host}:${proxyConfig.http.port}`;
+      }
+    }
+    
+    // Configure HTTPS proxy if available
+    if (proxyConfig.https) {
+      console.log(`Using HTTPS proxy: ${proxyConfig.https.protocol}://${proxyConfig.https.host}:${proxyConfig.https.port}`);
+      
+      // Configure HTTPS request handler with proxy
+      clientConfig.httpsProxy = `${proxyConfig.https.protocol}://${proxyConfig.https.host}:${proxyConfig.https.port}`;
+      
+      // Add proxy authentication if provided
+      if (proxyConfig.https.auth) {
+        clientConfig.httpsProxy = `${proxyConfig.https.protocol}://${proxyConfig.https.auth.username}:${proxyConfig.https.auth.password}@${proxyConfig.https.host}:${proxyConfig.https.port}`;
+      }
+    }
   }
 
   return new S3Client(clientConfig);
@@ -297,11 +342,27 @@ export function extractOpenNeuroAccession(path) {
 }
 
 /**
- * Download using direct HTTP requests for anonymous access
+ * Download using direct HTTP requests for anonymous access with proxy support
  */
 async function downloadWithDirectHttp(task, sourceConfig, destLocation, progressCallback) {
   // Build base URL for S3 bucket
   const baseUrl = `https://${sourceConfig.bucketName}.s3.amazonaws.com`;
+  
+  // Get proxy configuration
+  const proxyConfig = getProxyConfig();
+  const fetchOptions = {};
+  
+  // Configure proxy for Tauri fetch if proxy is enabled
+  if (proxyConfig && typeof window !== 'undefined') {
+    // In Tauri environment, proxy should be configured at the system level
+    // or via Tauri's HTTP client configuration
+    if (proxyConfig.http) {
+      console.log(`Using HTTP proxy for requests: ${proxyConfig.http.protocol}://${proxyConfig.http.host}:${proxyConfig.http.port}`);
+    }
+    if (proxyConfig.https) {
+      console.log(`Using HTTPS proxy for requests: ${proxyConfig.https.protocol}://${proxyConfig.https.host}:${proxyConfig.https.port}`);
+    }
+  }
   
   // For OpenNeuro, extract the accession number from the download path
   let s3Prefix = task.downloadPath;
@@ -319,7 +380,8 @@ async function downloadWithDirectHttp(task, sourceConfig, destLocation, progress
     method: 'GET',
     headers: {
       'Accept': 'application/xml'
-    }
+    },
+    ...fetchOptions
   });
   
   if (!listResponse.ok) {
@@ -368,7 +430,8 @@ async function downloadWithDirectHttp(task, sourceConfig, destLocation, progress
       // Download file directly via HTTP using Tauri fetch
       const fileUrl = `${baseUrl}/${encodeURIComponent(object.Key)}`;
       const fileResponse = await fetch(fileUrl, {
-        method: 'GET'
+        method: 'GET',
+        ...fetchOptions
       });
       
       if (!fileResponse.ok) {
@@ -390,13 +453,24 @@ async function downloadWithDirectHttp(task, sourceConfig, destLocation, progress
       }
       const filePath = await join(destPath, relativePath);
       
+      console.log(`Writing file: ${object.Key} -> ${filePath}`);
+      
       // Ensure directory exists for nested files
       const fileDir = filePath.substring(0, filePath.lastIndexOf('/'));
       if (fileDir !== destPath) {
+        console.log(`Creating directory: ${fileDir}`);
         await mkdir(fileDir, { recursive: true });
       }
       
-      await writeFile(filePath, buffer);
+      try {
+        await writeFile(filePath, buffer);
+        console.log(`Successfully wrote file: ${filePath} (${buffer.length} bytes)`);
+      } catch (writeError) {
+        console.error(`Failed to write file ${filePath}:`, writeError);
+        throw new Error(`Failed to write file ${relativePath}: ${writeError.message}`);
+      }
+      
+      console.log(`Downloaded file ${i + 1}/${objects.length}: ${relativePath} -> ${filePath}`);
       
       downloadedSize += object.Size;
       const progress = Math.round((downloadedSize / totalSize) * 100);
@@ -405,7 +479,10 @@ async function downloadWithDirectHttp(task, sourceConfig, destLocation, progress
       await progressCallback({
         progress: progress,
         downloadedSize: downloadedSize,
-        speed: 0 // TODO: Calculate actual speed
+        speed: 0, // TODO: Calculate actual speed
+        currentFile: relativePath,
+        totalFiles: objects.length,
+        completedFiles: i + 1
       });
       
     } catch (fileError) {

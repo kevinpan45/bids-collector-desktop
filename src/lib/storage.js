@@ -15,17 +15,26 @@ let tauriAppDataDir = null;
 async function initTauriAPIs() {
   if (typeof window !== 'undefined' && window.__TAURI_INTERNALS__) {
     try {
-      const fs = await import('@tauri-apps/plugin-fs');
-      const path = await import('@tauri-apps/api/path');
+      // Add timeout to prevent hanging on import
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Tauri API import timeout')), 3000);
+      });
       
-      tauriExists = fs.exists;
-      tauriReadTextFile = fs.readTextFile;
-      tauriWriteTextFile = fs.writeTextFile;
-      tauriMkdir = fs.mkdir;
-      tauriCreate = fs.create;
-      tauriAppDataDir = path.appDataDir;
+      const importPromise = (async () => {
+        const fs = await import('@tauri-apps/plugin-fs');
+        const path = await import('@tauri-apps/api/path');
+        
+        tauriExists = fs.exists;
+        tauriReadTextFile = fs.readTextFile;
+        tauriWriteTextFile = fs.writeTextFile;
+        tauriMkdir = fs.mkdir;
+        tauriCreate = fs.create;
+        tauriAppDataDir = path.appDataDir;
+        
+        return true;
+      })();
       
-      return true;
+      return await Promise.race([importPromise, timeoutPromise]);
     } catch (error) {
       console.warn('Tauri filesystem APIs not available:', error);
       return false;

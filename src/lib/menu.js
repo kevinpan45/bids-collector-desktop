@@ -26,6 +26,13 @@ let menus = [
         alias: "Storage", 
         icon: "storage", 
         enabled: true 
+    },
+    { 
+        name: "settings", 
+        link: "/settings", 
+        alias: "Settings", 
+        icon: "settings", 
+        enabled: true 
     }
 ];
 

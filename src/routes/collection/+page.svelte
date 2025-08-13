@@ -2,10 +2,25 @@
   import { onMount } from 'svelte';
   import toast from 'svelte-french-toast';
   import { getAllCollectionTasks, updateCollectionTask, deleteCollectionTask, getFullDownloadPath, startTaskDownload } from '$lib/collections.js';
+  import { 
+    startBackgroundDownload, 
+    syncDownloadProgress, 
+    listenToDownloadProgress, 
+    cleanupBackgroundDownload,
+    cancelDownloadTask,
+    testBackendAvailability,
+    isBackgroundDownloadSupported,
+    getBackgroundDownloadStatus,
+    initializeBackgroundDownloads
+  } from '$lib/backgroundDownloads.js';
+  import { loadConfig } from '$lib/storage.js';
   
   let collectionTasks = [];
   let loading = true;
   let error = null;
+  let refreshInterval = null;
+  let backendAvailable = false;
+  let storageConfigured = false;
   
   // Filter and view options
   let statusFilter = 'all'; // 'all', 'pending', 'downloading', 'completed', 'failed', 'paused'
@@ -30,22 +45,197 @@
       }
     });
   
-  onMount(() => {
+  onMount(async () => {
     console.log('Collection management page loaded');
-    loadCollectionTasks();
+    console.log('Environment status:', getBackgroundDownloadStatus());
+    
+    // Load collection tasks first (this doesn't depend on backend)
+    await loadCollectionTasks();
+    
+    // Check storage configuration
+    await checkStorageConfiguration();
+    
+    // Check if background downloads are supported in this environment
+    if (!isBackgroundDownloadSupported()) {
+      console.log('Background downloads not supported in current environment');
+      toast('Running in web browser - background downloads unavailable', {
+        duration: 5000,
+        style: 'background: #3b82f6; color: white;' // Info color
+      });
+      
+      // Reset any tasks that are stuck in "downloading" status in web browser
+      await resetStuckDownloadTasks();
+      
+      // Still set up basic refresh interval for the web environment
+      refreshInterval = setInterval(async () => {
+        if (!loading) {
+          try {
+            await refreshTasksQuietly();
+          } catch (error) {
+            console.error('Failed to refresh tasks:', error);
+          }
+        }
+      }, 5000); // Slower refresh for web environment
+      
+      return; // Skip Tauri-specific initialization
+    }
+    
+          // Test backend availability
+      try {
+        console.log('Testing backend availability...');
+        backendAvailable = await testBackendAvailability();
+        console.log('Backend availability result:', backendAvailable);
+      } catch (error) {
+        console.error('Backend availability test failed:', error);
+        backendAvailable = false;
+      }
+    
+    console.log('Tauri backend is available, proceeding with initialization');
+    
+    // Initialize background download monitoring (this depends on Tauri backend)
+    try {
+      console.log('Attempting to initialize background downloads...');
+      await initializeBackgroundDownloads();
+      console.log('Background downloads initialized successfully');
+      toast.success('Background download monitoring initialized');
+    } catch (error) {
+      console.error('Failed to initialize background downloads:', error);
+      toast.error('Background download monitoring failed to initialize');
+      // Continue without background downloads - basic functionality still works
+    }
+    
+    // Set up download progress listener
+    try {
+      console.log('Setting up download progress listener...');
+      const unlistenProgress = await listenToDownloadProgress((progress) => {
+        console.log('Received download progress:', progress);
+        // Progress updates are handled automatically through backend sync
+      });
+      
+      console.log('Download progress listener set up successfully');
+      
+      // Clean up listener on component destroy
+      return () => {
+        if (unlistenProgress) {
+          unlistenProgress();
+        }
+      };
+    } catch (error) {
+      console.error('Failed to set up download progress listener:', error);
+      toast.error('Download progress monitoring failed to initialize');
+      // Continue without progress listener - basic functionality still works
+    }
+    
+    // Set up refresh interval
+    refreshInterval = setInterval(async () => {
+      if (loading) {
+        console.log('Skipping refresh - already loading');
+        return;
+      }
+      
+      console.log('Running refresh interval...');
+      
+      // Only refresh if the page is visible and not currently loading something critical
+      if (document.visibilityState === 'visible') {
+        try {
+          // Only sync with backend if backend is available
+          if (backendAvailable) {
+            console.log('Syncing with backend...');
+            // Sync with backend progress
+            await syncDownloadProgress();
+          } else {
+            console.log('Backend not available, skipping sync');
+          }
+          // Always refresh frontend tasks
+          await refreshTasksQuietly();
+          console.log('Refresh completed');
+        } catch (error) {
+          console.error('Failed to sync download progress:', error);
+        }
+      } else {
+        console.log('Page not visible, skipping refresh');
+      }
+    }, 2000);    // Cleanup interval on component destroy
+    return () => {
+      if (refreshInterval) {
+        clearInterval(refreshInterval);
+      }
+    };
   });
   
   async function loadCollectionTasks() {
     try {
       loading = true;
-      collectionTasks = await getAllCollectionTasks();
+      console.log('Starting to load collection tasks...');
+      
+      // Add timeout to prevent hanging
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Loading tasks timeout')), 10000);
+      });
+      
+      const loadPromise = getAllCollectionTasks();
+      
+      collectionTasks = await Promise.race([loadPromise, timeoutPromise]);
       console.log(`Loaded ${collectionTasks.length} collection tasks`);
+      error = null;
     } catch (err) {
       console.error('Failed to load collection tasks:', err);
-      error = 'Failed to load collection tasks';
-      toast.error('Failed to load collection tasks');
+      error = err.message || 'Failed to load collection tasks';
+      toast.error(`Failed to load collection tasks: ${err.message}`);
+      collectionTasks = []; // Ensure we have a valid array
     } finally {
       loading = false;
+    }
+  }
+  
+  async function refreshTasksQuietly() {
+    try {
+      // Refresh without showing loading state
+      const updatedTasks = await getAllCollectionTasks();
+      collectionTasks = updatedTasks;
+      console.log(`Quietly refreshed ${collectionTasks.length} collection tasks`);
+    } catch (err) {
+      console.error('Failed to quietly refresh collection tasks:', err);
+      // Don't show error toast for background refresh
+    }
+  }
+  
+  async function resetStuckDownloadTasks() {
+    try {
+      console.log('Checking for stuck download tasks in web browser environment...');
+      const tasks = await getAllCollectionTasks();
+      const stuckTasks = tasks.filter(task => task.status === 'downloading');
+      
+      if (stuckTasks.length > 0) {
+        console.log(`Found ${stuckTasks.length} stuck download tasks, resetting them...`);
+        
+        for (const task of stuckTasks) {
+          await updateCollectionTask(task.id, {
+            status: 'failed',
+            errorMessage: 'Download was interrupted - not supported in web browser environment'
+          });
+          console.log(`Reset stuck task: ${task.name}`);
+        }
+        
+        // Reload tasks to reflect changes
+        await loadCollectionTasks();
+        
+        toast.error(`Reset ${stuckTasks.length} interrupted download(s) - downloads not supported in web browser`);
+      }
+    } catch (error) {
+      console.error('Failed to reset stuck download tasks:', error);
+    }
+  }
+  
+  async function checkStorageConfiguration() {
+    try {
+      const storageConfig = await loadConfig('storage', { storageLocations: [] });
+      const locations = storageConfig?.storageLocations || [];
+      storageConfigured = locations.length > 0;
+      console.log(`Storage configuration check: ${storageConfigured ? 'configured' : 'not configured'} (${locations.length} locations)`);
+    } catch (error) {
+      console.error('Failed to check storage configuration:', error);
+      storageConfigured = false;
     }
   }
   
@@ -96,18 +286,42 @@
   }
   
   function pauseTask(taskId) {
-    const taskIndex = collectionTasks.findIndex(task => task.id === taskId);
-    if (taskIndex === -1) return;
-    
-    const updates = { status: 'paused' };
-    
-    updateCollectionTask(taskId, { ...updates }).then(() => {
+    pauseTaskBackend(taskId);
+  }
+  
+  async function pauseTaskBackend(taskId) {
+    try {
+      const taskIndex = collectionTasks.findIndex(task => task.id === taskId);
+      if (taskIndex === -1) return;
+      
+      // Try to cancel the backend download if backend is available and supported
+      if (isBackgroundDownloadSupported()) {
+        try {
+          const backendAvailable = await testBackendAvailability();
+          if (backendAvailable) {
+            await cancelDownloadTask(taskId);
+            console.log('Backend download cancelled');
+          } else {
+            console.log('Backend unavailable, only updating frontend status');
+          }
+        } catch (backendError) {
+          console.warn('Failed to cancel backend download, continuing with frontend update:', backendError);
+        }
+      } else {
+        console.log('Background downloads not supported, only updating frontend status');
+      }
+      
+      // Update frontend task status
+      const updates = { status: 'paused' };
+      
+      await updateCollectionTask(taskId, updates);
       collectionTasks[taskIndex] = { ...collectionTasks[taskIndex], ...updates };
-      toast(`Task "${collectionTasks[taskIndex].name}" paused`);
-    }).catch(error => {
+      toast.success(`Task "${collectionTasks[taskIndex].name}" paused`);
+      
+    } catch (error) {
       console.error('Failed to pause task:', error);
       toast.error('Failed to pause task');
-    });
+    }
   }
   
   function resumeTask(taskId) {
@@ -118,8 +332,8 @@
     
     updateCollectionTask(taskId, updates).then(() => {
       collectionTasks[taskIndex] = { ...collectionTasks[taskIndex], ...updates };
-      toast.info(`Task "${collectionTasks[taskIndex].name}" resumed`);
-      simulateDownload(taskId);
+      toast.success(`Task "${collectionTasks[taskIndex].name}" resumed`);
+      startDownload(taskId);
     }).catch(error => {
       console.error('Failed to resume task:', error);
       toast.error('Failed to resume task');
@@ -127,16 +341,45 @@
   }
   
   function deleteTask(taskId) {
-    const task = collectionTasks.find(t => t.id === taskId);
-    if (!task) return;
-    
-    deleteCollectionTask(taskId).then(() => {
+    deleteTaskFromBackend(taskId);
+  }
+  
+  async function deleteTaskFromBackend(taskId) {
+    try {
+      const task = collectionTasks.find(t => t.id === taskId);
+      if (!task) return;
+      
+      // Try to cancel any ongoing download and cleanup backend if available and supported
+      if (isBackgroundDownloadSupported()) {
+        try {
+          const backendAvailable = await testBackendAvailability();
+          if (backendAvailable) {
+            await cancelDownloadTask(taskId).catch(err => 
+              console.log('No active download to cancel:', err)
+            );
+            await cleanupBackgroundDownload(taskId).catch(err => 
+              console.log('No backend task to cleanup:', err)
+            );
+            console.log('Backend cleanup completed');
+          } else {
+            console.log('Backend unavailable, skipping backend cleanup');
+          }
+        } catch (backendError) {
+          console.warn('Failed to cleanup backend, continuing with frontend deletion:', backendError);
+        }
+      } else {
+        console.log('Background downloads not supported, skipping backend cleanup');
+      }
+      
+      // Remove from frontend storage
+      await deleteCollectionTask(taskId);
       collectionTasks = collectionTasks.filter(t => t.id !== taskId);
       toast.success(`Task "${task.name}" deleted`);
-    }).catch(error => {
+      
+    } catch (error) {
       console.error('Failed to delete task:', error);
       toast.error('Failed to delete task');
-    });
+    }
   }
   
   // Start actual download for a task
@@ -147,6 +390,28 @@
       
       const task = collectionTasks[taskIndex];
       console.log(`Starting actual download for task: ${task.name}`);
+      
+      // Check if downloads are supported before attempting
+      if (!isBackgroundDownloadSupported()) {
+        const errorMsg = 'Downloads not supported in web browser environment. Please use the Tauri desktop application for background downloads.';
+        console.warn(errorMsg);
+        toast.error(errorMsg);
+        
+        // Update task status to failed
+        collectionTasks[taskIndex] = { 
+          ...task, 
+          status: 'failed',
+          errorMessage: errorMsg
+        };
+        
+        // Update in storage
+        await updateCollectionTask(taskId, {
+          status: 'failed',
+          errorMessage: errorMsg
+        });
+        
+        return;
+      }
       
       // Update UI to show download starting
       collectionTasks[taskIndex] = { 
@@ -173,7 +438,25 @@
       
     } catch (error) {
       console.error('Failed to start download:', error);
-      toast.error(`Failed to start download: ${error.message}`);
+      
+      let errorMessage = error.message;
+      
+      // Provide more helpful error messages based on common issues
+      if (error.message.includes('No storage locations configured')) {
+        errorMessage = 'No storage locations configured. Please set up storage locations in the Storage page first.';
+        toast.error('❌ Setup Required: Configure storage locations first!', {
+          duration: 8000
+        });
+      } else if (error.message.includes('Background downloads not supported')) {
+        errorMessage = 'Downloads not supported in web browser. Please use the desktop application.';
+        toast.error('❌ Browser Limitation: Use desktop app for downloads!', {
+          duration: 8000
+        });
+      } else {
+        toast.error(`❌ Download Failed: ${errorMessage}`, {
+          duration: 8000
+        });
+      }
       
       // Update task status to failed
       const taskIndex = collectionTasks.findIndex(task => task.id === taskId);
@@ -181,8 +464,14 @@
         collectionTasks[taskIndex] = { 
           ...collectionTasks[taskIndex], 
           status: 'failed',
-          errorMessage: error.message
+          errorMessage: errorMessage
         };
+        
+        // Update in storage
+        await updateCollectionTask(taskId, {
+          status: 'failed',
+          errorMessage: errorMessage
+        });
       }
     }
   }
@@ -236,7 +525,15 @@
     <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
       <div>
         <h1 class="text-3xl font-bold mb-2">Collection Tasks</h1>
-        <p class="text-base-content/60">Track and manage your dataset download tasks</p>
+        <div class="flex items-center gap-4">
+          <p class="text-base-content/60">Track and manage your dataset download tasks</p>
+          {#if collectionTasks.some(task => task.status === 'downloading')}
+            <div class="flex items-center gap-2 text-info">
+              <span class="loading loading-dots loading-xs"></span>
+              <span class="text-sm">Downloads active • Auto-refreshing</span>
+            </div>
+          {/if}
+        </div>
       </div>
       <div class="flex gap-2">
         <button 
@@ -255,6 +552,57 @@
         </button>
       </div>
     </div>
+  </div>
+  
+  <!-- Environment Status Banner -->
+  <div class="mb-6">
+    {#if !isBackgroundDownloadSupported()}
+      <div class="alert alert-info">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <div>
+          <h3 class="font-bold">Web Browser Mode - Limited Functionality</h3>
+          <div class="text-sm">
+            Downloads are not available in web browser mode. 
+            <br>• To download datasets, use the desktop application (Tauri)
+            <br>• You can still view and manage existing collection tasks
+            <br>• All download attempts will fail with an error message
+          </div>
+        </div>
+      </div>
+    {:else if !backendAvailable}
+      <div class="alert alert-warning">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.732 15.5c-.77.833.192 2.5 1.732 2.5z" />
+        </svg>
+        <div>
+          <h3 class="font-bold">Desktop Mode - Backend Unavailable</h3>
+          <div class="text-sm">
+            Tauri backend is not available. Basic functionality is available, but downloads may be interrupted.
+            <br>• Try restarting the application
+            <br>• Check that storage locations are configured
+          </div>
+        </div>
+      </div>
+    {:else}
+      <div class="alert alert-success">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <div>
+          <h3 class="font-bold">Desktop Mode - Downloads Ready</h3>
+          <div class="text-sm">
+            Running in Tauri desktop mode - downloads will continue in the background.
+            <br>• Storage configured: {storageConfigured ? '✅ Ready' : '❌ Please configure storage locations first'}
+            <br>• Downloads will persist even if you navigate away from this page
+            {#if !storageConfigured}
+              <br>• <a href="/storage" class="link font-semibold">Configure Storage Settings →</a>
+            {/if}
+          </div>
+        </div>
+      </div>
+    {/if}
   </div>
   
   <!-- Filters and Controls -->
@@ -371,13 +719,37 @@
                 <!-- svelte-ignore a11y-no-noninteractive-tabindex -->
                 <ul tabindex="0" class="dropdown-content z-[1] menu p-2 shadow bg-base-100 rounded-box w-48">
                   {#if task.status === 'pending' || task.status === 'failed'}
-                    <li><button type="button" on:click={() => startTask(task.id)}>Start Task</button></li>
+                    <li>
+                      <button 
+                        type="button" 
+                        on:click={() => startTask(task.id)}
+                        disabled={!isBackgroundDownloadSupported()}
+                        title={!isBackgroundDownloadSupported() ? 'Downloads not supported in web browser' : 'Start download task'}
+                      >
+                        Start Task
+                        {#if !isBackgroundDownloadSupported()}
+                          <span class="text-xs opacity-60">(Unavailable)</span>
+                        {/if}
+                      </button>
+                    </li>
                   {/if}
                   {#if task.status === 'downloading'}
                     <li><button type="button" on:click={() => pauseTask(task.id)}>Pause Task</button></li>
                   {/if}
                   {#if task.status === 'paused'}
-                    <li><button type="button" on:click={() => resumeTask(task.id)}>Resume Task</button></li>
+                    <li>
+                      <button 
+                        type="button" 
+                        on:click={() => resumeTask(task.id)}
+                        disabled={!isBackgroundDownloadSupported()}
+                        title={!isBackgroundDownloadSupported() ? 'Downloads not supported in web browser' : 'Resume download task'}
+                      >
+                        Resume Task
+                        {#if !isBackgroundDownloadSupported()}
+                          <span class="text-xs opacity-60">(Unavailable)</span>
+                        {/if}
+                      </button>
+                    </li>
                   {/if}
                   {#if task.status === 'failed'}
                     <li><button type="button" on:click={() => retryTask(task.id)}>Retry Task</button></li>
@@ -405,6 +777,16 @@
                     {/if}
                   </span>
                 </div>
+                {#if task.status === 'downloading' && (task.currentFile || task.totalFiles)}
+                  <div class="text-xs text-base-content/60 mb-1">
+                    {#if task.currentFile}
+                      Current: {task.currentFile}
+                    {/if}
+                    {#if task.totalFiles > 0}
+                      • Files: {task.completedFiles || 0}/{task.totalFiles}
+                    {/if}
+                  </div>
+                {/if}
                 <progress 
                   class="progress progress-primary w-full" 
                   value={task.progress || 0} 
