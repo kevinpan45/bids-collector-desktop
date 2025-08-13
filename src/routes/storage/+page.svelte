@@ -1,7 +1,7 @@
 <script>
   import { onMount, tick } from 'svelte';
   import { saveConfig, loadConfig } from '$lib/storage.js';
-  import { createS3Client, testS3Connection } from '$lib/s3Client.js';
+  import { createS3Client } from '$lib/s3Client.js';
   
   // Tauri APIs
   let tauriOpen = null;
@@ -392,12 +392,16 @@
     connectionTestResult = null;
     
     try {
-      const result = await testS3Connection({
-        bucketName: addLocationForm.bucketName,
-        endpoint: addLocationForm.endpoint,
-        region: addLocationForm.region,
-        accessKeyId: addLocationForm.accessKeyId,
-        secretAccessKey: addLocationForm.secretAccessKey
+      // Use Tauri command to test connection (bypasses CORS)
+      const { invoke } = await import('@tauri-apps/api/core');
+      const result = await invoke('test_s3_connection', {
+        config: {
+          bucket_name: addLocationForm.bucketName,
+          endpoint: addLocationForm.endpoint,
+          region: addLocationForm.region,
+          access_key_id: addLocationForm.accessKeyId,
+          secret_access_key: addLocationForm.secretAccessKey
+        }
       });
       
       connectionTestResult = result;

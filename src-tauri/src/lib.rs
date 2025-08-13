@@ -3,6 +3,9 @@ use std::sync::{Arc, Mutex};
 use regex::Regex;
 use tauri::Emitter;
 
+mod s3_client;
+use s3_client::{test_s3_connection, S3ConnectionConfig, S3ConnectionResult};
+
 /// Extract OpenNeuro accession number from DOI or path
 /// Example: "10.18112_openneuro.ds006486.v1.0.0" -> "ds006486"
 fn extract_openneuro_accession(path: &str) -> String {
@@ -420,7 +423,8 @@ pub fn run() {
             get_download_progress,
             get_all_download_progress,
             cancel_download_task,
-            cleanup_download_task
+            cleanup_download_task,
+            test_s3_connection
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {
