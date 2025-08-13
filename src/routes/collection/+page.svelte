@@ -21,6 +21,7 @@
   let refreshInterval = null;
   let backendAvailable = false;
   let storageConfigured = false;
+  let showStatusDetails = false;
   
   // Filter and view options
   let statusFilter = 'all'; // 'all', 'pending', 'downloading', 'completed', 'failed', 'paused'
@@ -512,7 +513,20 @@
   <div class="mb-8">
     <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
       <div>
-        <h1 class="text-3xl font-bold mb-2">Collection Tasks</h1>
+        <div class="flex items-center gap-3 mb-2">
+          <h1 class="text-3xl font-bold">Collection Tasks</h1>
+          {#if isBackgroundDownloadSupported() && backendAvailable}
+            <button 
+              class="btn btn-circle btn-outline btn-success btn-sm"
+              on:click={() => showStatusDetails = !showStatusDetails}
+              title="Show system status details"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </button>
+          {/if}
+        </div>
         <div class="flex items-center gap-4">
           <p class="text-base-content/60">Track and manage your dataset download tasks</p>
           {#if collectionTasks.some(task => task.status === 'downloading')}
@@ -574,22 +588,25 @@
         </div>
       </div>
     {:else}
-      <div class="alert alert-success">
-        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-        <div>
-          <h3 class="font-bold">Desktop Mode - Downloads Ready</h3>
-          <div class="text-sm">
-            Running in Tauri desktop mode - downloads will continue in the background.
-            <br>• Storage configured: {storageConfigured ? '✅ Ready' : '❌ Please configure storage locations first'}
-            <br>• Downloads will persist even if you navigate away from this page
-            {#if !storageConfigured}
-              <br>• <a href="/storage" class="link font-semibold">Configure Storage Settings →</a>
-            {/if}
+      <!-- Expandable Status Details (controlled by header icon) -->
+      {#if showStatusDetails}
+        <div class="alert alert-success">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <div>
+            <h3 class="font-bold">Desktop Mode - Downloads Ready</h3>
+            <div class="text-sm">
+              Running in Tauri desktop mode - downloads will continue in the background.
+              <br>• Storage configured: {storageConfigured ? '✅ Ready' : '❌ Please configure storage locations first'}
+              <br>• Downloads will persist even if you navigate away from this page
+              {#if !storageConfigured}
+                <br>• <a href="/storage" class="link font-semibold">Configure Storage Settings →</a>
+              {/if}
+            </div>
           </div>
         </div>
-      </div>
+      {/if}
     {/if}
   </div>
   
