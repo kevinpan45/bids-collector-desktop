@@ -221,8 +221,20 @@ export async function startTaskDownload(taskId) {
       return true;
     }
     
-    if (task.status !== 'pending' && task.status !== 'failed') {
-      throw new Error(`Task ${taskId} is not in pending or failed status (current: ${task.status})`);
+    if (task.status !== 'pending' && task.status !== 'failed' && task.status !== 'downloading') {
+      throw new Error(`Task ${taskId} is not in pending, failed, or downloading status (current: ${task.status})`);
+    }
+    
+    // If task is in downloading status but not actually running, reset it to pending
+    if (task.status === 'downloading') {
+      console.log(`Task ${taskId} was in downloading status but not running - resetting to pending`);
+      task.status = 'pending';
+      task.progress = 0;
+      task.downloadedSize = 0;
+      task.speed = 0;
+      task.errorMessage = null;
+      // Save the updated task status
+      await saveConfig('collections', { tasks: tasks });
     }
     
     console.log(`Starting background download for task: ${task.name}`);

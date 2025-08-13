@@ -348,15 +348,24 @@ async fn perform_download(
         .and_then(|v| v.as_array())
         .ok_or("No storage locations specified")?;
     
-    // Get the first local storage location
-    let local_storage = storage_locations
+    // Get the first available storage location (local or S3-compatible)
+    let storage_location = storage_locations
         .iter()
-        .find(|loc| loc.get("type").and_then(|t| t.as_str()) == Some("local"))
-        .ok_or("No local storage location found")?;
+        .find(|loc| {
+            let storage_type = loc.get("type").and_then(|t| t.as_str());
+            storage_type == Some("local") || storage_type == Some("s3-compatible")
+        })
+        .ok_or("No compatible storage location found (local or s3-compatible)")?;
     
-    let storage_path = local_storage.get("path")
+    let storage_type = storage_location.get("type")
+        .and_then(|t| t.as_str())
+        .ok_or("No storage type specified")?;
+    
+    let storage_path = storage_location.get("path")
         .and_then(|p| p.as_str())
         .ok_or("No storage path specified")?;
+    
+    println!("Using storage location: type={}, path={}", storage_type, storage_path);
     
     // Update status to downloading
     {
@@ -366,21 +375,46 @@ async fn perform_download(
         }
     }
     
-    // Create destination directory
-    let dest_dir = format!("{}/{}", storage_path, download_path);
-    println!("Creating destination directory: {}", dest_dir);
-    
-    if let Err(e) = fs::create_dir_all(&dest_dir).await {
-        return Err(format!("Failed to create directory {}: {}", dest_dir, e));
+    // Handle different storage types
+    match storage_type {
+        "local" => {
+            // For local storage, create destination directory
+            let dest_dir = format!("{}/{}", storage_path, download_path);
+            println!("Creating local destination directory: {}", dest_dir);
+            
+            if let Err(e) = fs::create_dir_all(&dest_dir).await {
+                return Err(format!("Failed to create directory {}: {}", dest_dir, e));
+            }
+            
+            // Download to local storage
+            download_to_local_storage(&task_id, &dest_dir, dataset_provider, download_path, &state, &app_handle).await
+        },
+        "s3-compatible" => {
+            // For S3-compatible storage, upload to S3 bucket
+            println!("Downloading to S3-compatible storage: {}", storage_path);
+            download_to_s3_storage(&task_id, storage_location, dataset_provider, download_path, &state, &app_handle).await
+        },
+        _ => {
+            Err(format!("Unsupported storage type: {}", storage_type))
+        }
     }
-    
+}
+
+async fn download_to_local_storage(
+    task_id: &str,
+    dest_dir: &str,
+    dataset_provider: &str,
+    download_path: &str,
+    state: &DownloadState,
+    app_handle: &tauri::AppHandle,
+) -> Result<(), String> {
     // For OpenNeuro datasets, download all files in the dataset
     if dataset_provider.to_lowercase() == "openneuro" {
         // Extract OpenNeuro accession from DOI-based path (e.g., "10.18112_openneuro.ds006486.v1.0.0" -> "ds006486")
         let accession = extract_openneuro_accession(download_path);
         println!("OpenNeuro: Using accession {} instead of {}", accession, download_path);
         
-        match download_openneuro_dataset(&accession, &dest_dir, &task_id, &state, &app_handle).await {
+        match download_openneuro_dataset(&accession, dest_dir, task_id, state, app_handle).await {
             Ok(_) => {
                 println!("Download completed for task: {}", task_id);
                 Ok(())
@@ -391,8 +425,490 @@ async fn perform_download(
             }
         }
     } else {
-        Err("Unsupported dataset provider".to_string())
+        Err("Only OpenNeuro datasets are currently supported".to_string())
     }
+}
+
+async fn download_to_s3_storage(
+    task_id: &str,
+    storage_location: &serde_json::Value,
+    dataset_provider: &str,
+    download_path: &str,
+    state: &DownloadState,
+    app_handle: &tauri::AppHandle,
+) -> Result<(), String> {
+    // Extract S3 configuration from storage location
+    let bucket_name = storage_location.get("bucketName")
+        .and_then(|b| b.as_str())
+        .ok_or("No bucket name in S3 storage location")?;
+    
+    let endpoint = storage_location.get("endpoint")
+        .and_then(|e| e.as_str())
+        .ok_or("No endpoint in S3 storage location")?;
+    
+    let access_key_id = storage_location.get("accessKeyId")
+        .and_then(|k| k.as_str())
+        .ok_or("No access key ID in S3 storage location")?;
+    
+    let secret_access_key = storage_location.get("secretAccessKey")
+        .and_then(|s| s.as_str())
+        .ok_or("No secret access key in S3 storage location")?;
+    
+    let region = storage_location.get("region")
+        .and_then(|r| r.as_str())
+        .unwrap_or("us-east-1");
+    
+    println!("S3 destination: bucket={}, endpoint={}, region={}", bucket_name, endpoint, region);
+    
+    // For OpenNeuro datasets, upload all files directly to S3
+    if dataset_provider.to_lowercase() == "openneuro" {
+        // Extract OpenNeuro accession from DOI-based path
+        let accession = extract_openneuro_accession(download_path);
+        println!("OpenNeuro: Uploading accession {} to S3-compatible storage", accession);
+        
+        // Upload the entire dataset to S3-compatible storage
+        upload_openneuro_to_s3(
+            &accession,
+            download_path,
+            bucket_name,
+            endpoint,
+            access_key_id,
+            secret_access_key,
+            region,
+            task_id,
+            state,
+            app_handle,
+        ).await
+    } else {
+        Err("Only OpenNeuro datasets are currently supported".to_string())
+    }
+}
+
+async fn upload_openneuro_to_s3(
+    accession: &str,
+    download_path: &str,
+    bucket_name: &str,
+    endpoint: &str,
+    access_key_id: &str,
+    secret_access_key: &str,
+    region: &str,
+    task_id: &str,
+    state: &DownloadState,
+    app_handle: &tauri::AppHandle,
+) -> Result<(), String> {
+    println!("Starting direct upload of OpenNeuro dataset {} to S3", accession);
+    
+    // First, list all files in the OpenNeuro dataset
+    let list_url = format!("https://s3.amazonaws.com/openneuro.org?list-type=2&prefix={}/", accession);
+    println!("Listing files from: {}", list_url);
+    
+    let client = reqwest::Client::new();
+    let list_response = client.get(&list_url).send().await
+        .map_err(|e| format!("Failed to list dataset files: {}", e))?;
+    
+    if !list_response.status().is_success() {
+        return Err(format!("Failed to list files: HTTP {}", list_response.status()));
+    }
+    
+    let xml_content = list_response.text().await
+        .map_err(|e| format!("Failed to read listing response: {}", e))?;
+    
+    // Parse the XML response to get file list
+    let file_list = parse_s3_listing(&xml_content)?;
+    
+    if file_list.is_empty() {
+        return Err(format!("No files found for dataset: {}", accession));
+    }
+    
+    println!("Found {} files to upload to S3", file_list.len());
+    
+    // Update progress tracking
+    let total_files = file_list.len() as u32;
+    let total_size: u64 = file_list.iter().map(|f| f.size).sum();
+    
+    {
+        let mut downloads = state.lock().unwrap();
+        if let Some(progress) = downloads.get_mut(task_id) {
+            progress.total_files = Some(total_files);
+            progress.total_size = total_size;
+            progress.status = "uploading".to_string();
+        }
+    }
+    
+    // Stream each file from OpenNeuro directly to S3-compatible storage
+    let mut uploaded_files = 0u32;
+    let mut uploaded_size = 0u64;
+    
+    for file_info in &file_list {
+        println!("Uploading file {}/{}: {}", uploaded_files + 1, total_files, file_info.key);
+        
+        // Download file from OpenNeuro
+        let file_url = format!("https://s3.amazonaws.com/openneuro.org/{}", file_info.key);
+        let download_response = client.get(&file_url).send().await
+            .map_err(|e| format!("Failed to download file {}: {}", file_info.key, e))?;
+        
+        if !download_response.status().is_success() {
+            return Err(format!("Failed to download file {}: HTTP {}", file_info.key, download_response.status()));
+        }
+        
+        // Get file content as bytes
+        let file_content = download_response.bytes().await
+            .map_err(|e| format!("Failed to read file content for {}: {}", file_info.key, e))?;
+        
+        // Create S3 key for destination (remove accession prefix, use download_path)
+        let relative_path = file_info.key.strip_prefix(&format!("{}/", accession))
+            .unwrap_or(&file_info.key);
+        let s3_key = format!("{}/{}", download_path, relative_path);
+        
+        // Upload to S3-compatible storage using PUT request with AWS signature
+        upload_to_s3_compatible(
+            endpoint,
+            bucket_name,
+            &s3_key,
+            &file_content,
+            access_key_id,
+            secret_access_key,
+            region,
+        ).await.map_err(|e| format!("Failed to upload {}: {}", file_info.key, e))?;
+        
+        uploaded_files += 1;
+        uploaded_size += file_info.size;
+        
+        // Update progress
+        let progress_percent = (uploaded_size as f64 / total_size as f64 * 100.0).min(100.0);
+        
+        {
+            let mut downloads = state.lock().unwrap();
+            if let Some(progress) = downloads.get_mut(task_id) {
+                progress.progress = progress_percent;
+                progress.downloaded_size = uploaded_size;
+                progress.completed_files = Some(uploaded_files);
+                progress.current_file = Some(relative_path.to_string());
+            }
+        }
+        
+        // Emit progress event
+        let _ = app_handle.emit("download_progress", serde_json::json!({
+            "taskId": task_id,
+            "progress": progress_percent,
+            "uploadedSize": uploaded_size,
+            "totalSize": total_size,
+            "currentFile": relative_path,
+            "completedFiles": uploaded_files,
+            "totalFiles": total_files,
+            "status": "uploading"
+        }));
+        
+        println!("Uploaded file {}/{}: {} ({} bytes)", uploaded_files, total_files, relative_path, file_info.size);
+    }
+    
+    // Mark as completed
+    {
+        let mut downloads = state.lock().unwrap();
+        if let Some(progress) = downloads.get_mut(task_id) {
+            progress.status = "completed".to_string();
+            progress.progress = 100.0;
+            progress.completed_at = Some(chrono::Utc::now().to_rfc3339());
+        }
+    }
+    
+    // Emit completion event
+    let _ = app_handle.emit("download_completed", serde_json::json!({
+        "taskId": task_id,
+        "status": "completed",
+        "totalFiles": total_files,
+        "totalSize": total_size
+    }));
+    
+    println!("Successfully uploaded all {} files to S3-compatible storage", total_files);
+    Ok(())
+}
+
+async fn upload_to_s3_compatible(
+    endpoint: &str,
+    bucket_name: &str,
+    key: &str,
+    content: &[u8],
+    access_key_id: &str,
+    secret_access_key: &str,
+    region: &str,
+) -> Result<(), String> {
+    use std::collections::HashMap;
+    use chrono::Utc;
+    use hmac::Hmac;
+    use sha2::{Sha256, Digest};
+    use url::Url;
+    
+    // Create the URL for the PUT request (force path-style for S3-compatible services)
+    let base_url = if endpoint.starts_with("http") {
+        endpoint.to_string()
+    } else {
+        format!("https://{}", endpoint)
+    };
+    
+    // Use path-style URL: http://endpoint/bucket/key
+    let url = format!("{}/{}/{}", base_url, bucket_name, key);
+    
+    let now = Utc::now();
+    let timestamp_str = now.format("%Y%m%dT%H%M%SZ").to_string();
+    
+    // Parse host from URL for the host header
+    let parsed_url = Url::parse(&url).map_err(|e| format!("Invalid URL: {}", e))?;
+    let host = parsed_url.host_str().ok_or("No host in URL")?;
+    let port = parsed_url.port();
+    
+    // Construct proper host header with port if present
+    let host_header = if let Some(port) = port {
+        format!("{}:{}", host, port)
+    } else {
+        host.to_string()
+    };
+    
+    // Create content hash
+    let mut hasher = Sha256::new();
+    hasher.update(content);
+    let content_hash = hex::encode(hasher.finalize());
+    
+    println!("Uploading to URL: {}", url);
+    println!("Host header: {}", host_header);
+    println!("Content hash: {}", content_hash);
+    
+    // Create headers for AWS signature (minimal set for better compatibility)
+    let mut headers = HashMap::new();
+    headers.insert("host".to_string(), host_header.clone());
+    headers.insert("x-amz-date".to_string(), timestamp_str.clone());
+    headers.insert("x-amz-content-sha256".to_string(), content_hash.clone());
+    
+    // Generate AWS signature for PUT request
+    let authorization = generate_aws_signature_v4_simple(
+        "PUT",
+        &url,
+        &headers,
+        access_key_id,
+        secret_access_key,
+        region,
+        &now,
+        &content_hash,
+    )?;
+    
+    println!("Authorization: {}", authorization);
+    
+    // Create the PUT request
+    let client = reqwest::Client::new();
+    let response = client
+        .put(&url)
+        .header("Host", host_header)
+        .header("Authorization", authorization)
+        .header("x-amz-date", timestamp_str)
+        .header("x-amz-content-sha256", content_hash)
+        .header("Content-Length", content.len())
+        .body(content.to_vec())
+        .send()
+        .await
+        .map_err(|e| format!("Failed to upload file: {}", e))?;
+    
+    if response.status().is_success() {
+        println!("Upload successful!");
+        Ok(())
+    } else {
+        let status = response.status();
+        let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+        println!("Upload failed - Status: {}, Error: {}", status, error_text);
+        Err(format!("Upload failed with status {}: {}", status, error_text))
+    }
+}
+
+// Simplified AWS signature generation for S3-compatible services
+fn generate_aws_signature_v4_simple(
+    method: &str,
+    url: &str,
+    headers: &std::collections::HashMap<String, String>,
+    access_key: &str,
+    secret_key: &str,
+    region: &str,
+    timestamp: &chrono::DateTime<chrono::Utc>,
+    content_hash: &str,
+) -> Result<String, String> {
+    use hmac::Hmac;
+    use sha2::{Sha256, Digest};
+    use url::Url;
+    
+    let parsed_url = Url::parse(url).map_err(|e| format!("Invalid URL: {}", e))?;
+    
+    // Create canonical request
+    let canonical_uri = parsed_url.path();
+    let canonical_query = parsed_url.query().unwrap_or("");
+    
+    // Create canonical headers (sorted)
+    let mut canonical_headers = String::new();
+    let mut signed_headers = Vec::new();
+    
+    let mut sorted_headers: Vec<_> = headers.iter().collect();
+    sorted_headers.sort_by_key(|&(k, _)| k.to_lowercase());
+    
+    for (key, value) in sorted_headers {
+        let key_lower = key.to_lowercase();
+        canonical_headers.push_str(&format!("{}:{}\n", key_lower, value.trim()));
+        signed_headers.push(key_lower);
+    }
+    
+    let signed_headers_str = signed_headers.join(";");
+    
+    // Create canonical request
+    let canonical_request = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        method,
+        canonical_uri,
+        canonical_query,
+        canonical_headers,
+        signed_headers_str,
+        content_hash
+    );
+    
+    println!("Canonical request:\n{}", canonical_request);
+    
+    // Create string to sign
+    let date = timestamp.format("%Y%m%d").to_string();
+    let timestamp_str = timestamp.format("%Y%m%dT%H%M%SZ").to_string();
+    let credential_scope = format!("{}/{}/s3/aws4_request", date, region);
+    
+    let mut hasher = Sha256::new();
+    hasher.update(canonical_request.as_bytes());
+    let canonical_request_hash = hex::encode(hasher.finalize());
+    
+    let string_to_sign = format!(
+        "AWS4-HMAC-SHA256\n{}\n{}\n{}",
+        timestamp_str,
+        credential_scope,
+        canonical_request_hash
+    );
+    
+    println!("String to sign:\n{}", string_to_sign);
+    
+    // Calculate signature
+    let date_key = hmac_sha256_simple(format!("AWS4{}", secret_key).as_bytes(), date.as_bytes())?;
+    let date_region_key = hmac_sha256_simple(&date_key, region.as_bytes())?;
+    let date_region_service_key = hmac_sha256_simple(&date_region_key, b"s3")?;
+    let signing_key = hmac_sha256_simple(&date_region_service_key, b"aws4_request")?;
+    
+    let signature = hmac_sha256_simple(&signing_key, string_to_sign.as_bytes())?;
+    let signature_hex = hex::encode(signature);
+    
+    println!("Signature: {}", signature_hex);
+    
+    // Create authorization header
+    let authorization = format!(
+        "AWS4-HMAC-SHA256 Credential={}/{}, SignedHeaders={}, Signature={}",
+        access_key,
+        credential_scope,
+        signed_headers_str,
+        signature_hex
+    );
+    
+    Ok(authorization)
+}
+
+fn hmac_sha256_simple(key: &[u8], data: &[u8]) -> Result<Vec<u8>, String> {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+    
+    let mut mac = Hmac::<Sha256>::new_from_slice(key)
+        .map_err(|e| format!("HMAC error: {}", e))?;
+    mac.update(data);
+    Ok(mac.finalize().into_bytes().to_vec())
+}
+
+fn generate_aws_signature_v4(
+    method: &str,
+    url: &str,
+    headers: &std::collections::HashMap<String, String>,
+    access_key: &str,
+    secret_key: &str,
+    region: &str,
+    timestamp: &chrono::DateTime<chrono::Utc>,
+    content_hash: &str,
+) -> Result<String, String> {
+    use hmac::Hmac;
+    use sha2::{Sha256, Digest};
+    use url::Url;
+    
+    let parsed_url = Url::parse(url).map_err(|e| format!("Invalid URL: {}", e))?;
+    
+    // Create canonical request
+    let canonical_uri = parsed_url.path();
+    let canonical_query = parsed_url.query().unwrap_or("");
+    
+    // Create canonical headers (sorted)
+    let mut canonical_headers = String::new();
+    let mut signed_headers = Vec::new();
+    
+    let mut sorted_headers: Vec<_> = headers.iter().collect();
+    sorted_headers.sort_by_key(|&(k, _)| k.to_lowercase());
+    
+    for (key, value) in sorted_headers {
+        let key_lower = key.to_lowercase();
+        canonical_headers.push_str(&format!("{}:{}\n", key_lower, value.trim()));
+        signed_headers.push(key_lower);
+    }
+    
+    let signed_headers_str = signed_headers.join(";");
+    
+    // Create canonical request
+    let canonical_request = format!(
+        "{}\n{}\n{}\n{}\n{}\n{}",
+        method,
+        canonical_uri,
+        canonical_query,
+        canonical_headers,
+        signed_headers_str,
+        content_hash
+    );
+    
+    // Create string to sign
+    let date = timestamp.format("%Y%m%d").to_string();
+    let timestamp_str = timestamp.format("%Y%m%dT%H%M%SZ").to_string();
+    let credential_scope = format!("{}/{}/s3/aws4_request", date, region);
+    
+    let mut hasher = Sha256::new();
+    hasher.update(canonical_request.as_bytes());
+    let canonical_request_hash = hex::encode(hasher.finalize());
+    
+    let string_to_sign = format!(
+        "AWS4-HMAC-SHA256\n{}\n{}\n{}",
+        timestamp_str,
+        credential_scope,
+        canonical_request_hash
+    );
+    
+    // Calculate signature
+    let date_key = hmac_sha256(format!("AWS4{}", secret_key).as_bytes(), date.as_bytes())?;
+    let date_region_key = hmac_sha256(&date_key, region.as_bytes())?;
+    let date_region_service_key = hmac_sha256(&date_region_key, b"s3")?;
+    let signing_key = hmac_sha256(&date_region_service_key, b"aws4_request")?;
+    
+    let signature = hmac_sha256(&signing_key, string_to_sign.as_bytes())?;
+    let signature_hex = hex::encode(signature);
+    
+    // Create authorization header
+    let authorization = format!(
+        "AWS4-HMAC-SHA256 Credential={}/{}, SignedHeaders={}, Signature={}",
+        access_key,
+        credential_scope,
+        signed_headers_str,
+        signature_hex
+    );
+    
+    Ok(authorization)
+}
+
+fn hmac_sha256(key: &[u8], data: &[u8]) -> Result<Vec<u8>, String> {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+    
+    let mut mac = Hmac::<Sha256>::new_from_slice(key)
+        .map_err(|e| format!("HMAC error: {}", e))?;
+    mac.update(data);
+    Ok(mac.finalize().into_bytes().to_vec())
 }
 
 #[tauri::command]
