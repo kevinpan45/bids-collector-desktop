@@ -24,26 +24,9 @@
   
   // Filter and view options
   let statusFilter = 'all'; // 'all', 'pending', 'downloading', 'completed', 'failed', 'paused'
-  let sortBy = 'created'; // 'created', 'name', 'status', 'progress'
-  let sortOrder = 'desc'; // 'asc', 'desc'
   
   $: filteredTasks = collectionTasks
-    .filter(task => statusFilter === 'all' || task.status === statusFilter)
-    .sort((a, b) => {
-      let aVal = a[sortBy];
-      let bVal = b[sortBy];
-      
-      if (sortBy === 'created') {
-        aVal = new Date(aVal);
-        bVal = new Date(bVal);
-      }
-      
-      if (sortOrder === 'asc') {
-        return aVal > bVal ? 1 : -1;
-      } else {
-        return aVal < bVal ? 1 : -1;
-      }
-    });
+    .filter(task => statusFilter === 'all' || task.status === statusFilter);
   
   onMount(async () => {
     console.log('Collection management page loaded');
@@ -620,36 +603,6 @@
           <option value="failed">Failed</option>
           <option value="paused">Paused</option>
         </select>
-      </div>
-      
-      <!-- Sort Options -->
-      <div class="form-control">
-        <label class="label" for="sort-by">
-          <span class="label-text">Sort by</span>
-        </label>
-        <div class="join">
-          <select id="sort-by" class="join-item select select-bordered select-sm" bind:value={sortBy}>
-            <option value="created">Created</option>
-            <option value="name">Name</option>
-            <option value="status">Status</option>
-            <option value="progress">Progress</option>
-          </select>
-          <button 
-            class="join-item btn btn-sm"
-            class:btn-active={sortOrder === 'desc'}
-            on:click={() => sortOrder = sortOrder === 'asc' ? 'desc' : 'asc'}
-          >
-            {#if sortOrder === 'desc'}
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
-              </svg>
-            {:else}
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
-              </svg>
-            {/if}
-          </button>
-        </div>
       </div>
       
       <!-- Task Count -->
