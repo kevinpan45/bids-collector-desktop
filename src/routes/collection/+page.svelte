@@ -26,7 +26,13 @@
   let statusFilter = 'all'; // 'all', 'pending', 'downloading', 'completed', 'failed', 'paused'
   
   $: filteredTasks = collectionTasks
-    .filter(task => statusFilter === 'all' || task.status === statusFilter);
+    .filter(task => statusFilter === 'all' || task.status === statusFilter)
+    .sort((a, b) => {
+      // Sort by update time descending (most recently updated first)
+      const aTime = new Date(a.updatedAt || a.createdAt || 0);
+      const bTime = new Date(b.updatedAt || b.createdAt || 0);
+      return bTime - aTime;
+    });
   
   onMount(async () => {
     console.log('Collection management page loaded');
