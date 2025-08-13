@@ -51,32 +51,7 @@
   let securityWarning = "Your credentials are stored locally on your device. Never share your access keys with anyone and use minimal required permissions.";
   let showCredentials = false; // Toggle for showing/hiding credentials
   
-  let recentFiles = [
-    {
-      name: 'sub-001_task-rest_bold.nii.gz',
-      dataset: 'fMRI Motor Task Study',
-      size: '45.2 MB',
-      modified: '2025-01-29 14:30'
-    },
-    {
-      name: 'sub-002_anat_T1w.nii.gz',
-      dataset: 'fMRI Motor Task Study',
-      size: '12.8 MB',
-      modified: '2025-01-29 13:45'
-    },
-    {
-      name: 'participants.tsv',
-      dataset: 'EEG Resting State',
-      size: '2.3 KB',
-      modified: '2025-01-29 11:20'
-    },
-    {
-      name: 'dataset_description.json',
-      dataset: 'DTI Connectivity Study',
-      size: '1.1 KB',
-      modified: '2025-01-28 16:15'
-    }
-  ];
+
   
   // Initialize Tauri APIs on mount
   onMount(async () => {
@@ -673,43 +648,6 @@
           </table>
         </div>
       {/if}
-    </div>
-  </div>
-  
-  <!-- Recent Files -->
-  <div class="card bg-base-100 shadow-xl">
-    <div class="card-body">
-      <h2 class="card-title mb-6">Recent Files</h2>
-      
-      <div class="overflow-x-auto">
-        <table class="table w-full">
-          <thead>
-            <tr>
-              <th>File Name</th>
-              <th>Dataset</th>
-              <th>Size</th>
-              <th>Last Modified</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each recentFiles as file}
-              <tr>
-                <td class="font-mono text-sm">{file.name}</td>
-                <td>{file.dataset}</td>
-                <td>{file.size}</td>
-                <td>{file.modified}</td>
-                <td>
-                  <div class="flex gap-1">
-                    <button class="btn btn-ghost btn-xs">Open</button>
-                    <button class="btn btn-ghost btn-xs">Info</button>
-                  </div>
-                </td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      </div>
     </div>
   </div>
   
