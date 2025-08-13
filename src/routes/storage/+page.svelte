@@ -6,13 +6,6 @@
   // Tauri APIs
   let tauriOpen = null;
   
-  let storageData = {
-    total: '10 GB',
-    used: '4.85 GB',
-    available: '5.15 GB',
-    usedPercentage: 48.5
-  };
-  
   // Start with empty storage locations to demonstrate the "no locations" state
   let storageLocations = [];
   
@@ -95,20 +88,13 @@
     try {
       const defaultConfig = {
         storageLocations: [],
-        nextLocationId: 1,
-        storageData: {
-          total: '10 GB',
-          used: '4.85 GB',
-          available: '5.15 GB',
-          usedPercentage: 48.5
-        }
+        nextLocationId: 1
       };
       
       const config = await loadConfig('storage', defaultConfig);
       
       storageLocations = config.storageLocations || [];
       nextLocationId = config.nextLocationId || 1;
-      storageData = config.storageData || defaultConfig.storageData;
       
       console.log(`Loaded ${storageLocations.length} storage locations from persistent config`);
     } catch (error) {
@@ -119,12 +105,6 @@
       // Initialize with defaults if config loading fails completely
       storageLocations = [];
       nextLocationId = 1;
-      storageData = {
-        total: '10 GB',
-        used: '4.85 GB',
-        available: '5.15 GB',
-        usedPercentage: 48.5
-      };
     }
   }
   
@@ -133,7 +113,6 @@
       const config = {
         storageLocations,
         nextLocationId,
-        storageData,
         lastUpdated: new Date().toISOString()
       };
       
@@ -450,10 +429,6 @@
     showAddLocationModal = true;
   }
   
-  function handleCleanupStorage() {
-    console.log('Cleanup storage clicked');
-  }
-  
   // Show config path
   let configPath = '';
   async function updateConfigPath() {
@@ -499,68 +474,6 @@
   <div class="mb-8">
     <h1 class="text-3xl font-bold mb-4">Storage Management</h1>
     <p class="text-base-content/70">Monitor and manage your BIDS data storage locations.</p>
-  </div>
-  
-  <!-- Storage Overview -->
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-    <!-- Storage Usage Chart -->
-    <div class="card bg-base-100 shadow-xl">
-      <div class="card-body">
-        <h2 class="card-title mb-4">Storage Usage</h2>
-        <div class="flex items-center justify-center mb-4">
-          <div class="radial-progress text-primary" style="--value:{storageData.usedPercentage};" role="progressbar">
-            {storageData.usedPercentage.toFixed(1)}%
-          </div>
-        </div>
-        <div class="grid grid-cols-3 gap-4 text-center">
-          <div>
-            <p class="text-sm text-base-content/70">Total</p>
-            <p class="font-bold">{storageData.total}</p>
-          </div>
-          <div>
-            <p class="text-sm text-base-content/70">Used</p>
-            <p class="font-bold text-primary">{storageData.used}</p>
-          </div>
-          <div>
-            <p class="text-sm text-base-content/70">Available</p>
-            <p class="font-bold text-success">{storageData.available}</p>
-          </div>
-        </div>
-      </div>
-    </div>
-    
-    <!-- Quick Actions -->
-    <div class="card bg-base-100 shadow-xl">
-      <div class="card-body">
-        <h2 class="card-title mb-4">Quick Actions</h2>
-        <div class="space-y-3">
-          <button class="btn btn-primary w-full justify-start" on:click={handleAddStorage}>
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-            </svg>
-            Add Storage Location
-          </button>
-          <button class="btn btn-secondary w-full justify-start" on:click={handleCleanupStorage}>
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-            </svg>
-            Cleanup Storage
-          </button>
-          <button class="btn btn-accent w-full justify-start">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-            </svg>
-            Export All Data
-          </button>
-          <button class="btn btn-info w-full justify-start">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            Verify Integrity
-          </button>
-        </div>
-      </div>
-    </div>
   </div>
   
   <!-- Configuration Info -->

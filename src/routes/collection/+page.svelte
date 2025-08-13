@@ -97,7 +97,6 @@
       console.log('Attempting to initialize background downloads...');
       await initializeBackgroundDownloads();
       console.log('Background downloads initialized successfully');
-      toast.success('Background download monitoring initialized');
     } catch (error) {
       console.error('Failed to initialize background downloads:', error);
       toast.error('Background download monitoring failed to initialize');
