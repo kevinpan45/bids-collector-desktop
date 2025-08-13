@@ -2,8 +2,6 @@
   import SidebarMenuItem from "$component/SidebarMenuItem.svelte";
   import { getMenus } from "$lib/menu";
 
-  let serverVersion = "1.0.0";
-
   export let closeDrawer;
   export let collapsed;
 
@@ -31,13 +29,6 @@
       class={`font-title inline-flex text-lg md:text-2xl ${collapsed ? "!hidden" : ""}`}
     >
       BIDS Collector
-    </div>
-    <div
-      tabindex="0"
-      role="button"
-      class={`link link-hover inline-block font-mono text-xs ${collapsed ? "!hidden" : ""}`}
-    >
-      v{serverVersion}
     </div>
   </a>
 </div>
