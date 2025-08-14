@@ -28,19 +28,11 @@ jobs:
 
     - name: Install frontend dependencies
       run: |
-        npm cache clean --force
-        npm install
-        dir node_modules\.bin
-        npm list vite
+        npm ci
+        npm list --depth=0
 
     - name: Build frontend
-      run: |
-        echo "Checking node_modules/.bin/vite"
-        if exist "node_modules\.bin\vite.cmd" (
-          node_modules\.bin\vite.cmd build
-        ) else (
-          npx --yes vite@^5.0.0 build
-        )
+      run: npm run build
 
     - name: Build Tauri app
       uses: tauri-apps/tauri-action@v0
