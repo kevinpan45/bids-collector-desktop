@@ -11,6 +11,10 @@ jobs:
   build-windows:
     runs-on: windows-latest
     
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ""
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+    
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
@@ -26,6 +30,11 @@ jobs:
       with:
         targets: x86_64-pc-windows-msvc
 
+    - name: Install WebView2
+      run: |
+        Invoke-WebRequest -Uri "https://go.microsoft.com/fwlink/p/?LinkId=2124703" -OutFile "MicrosoftEdgeWebview2Setup.exe"
+        Start-Process -FilePath "MicrosoftEdgeWebview2Setup.exe" -ArgumentList "/silent", "/install" -Wait
+
     - name: Rust cache
       uses: swatinem/rust-cache@v2
       with:
@@ -40,21 +49,43 @@ jobs:
     - name: Build Windows desktop app
       run: npm run tauri:build:win
 
+    - name: List build outputs
+      shell: powershell
+      run: |
+        echo "Checking build outputs..."
+        if (Test-Path "src-tauri/target/x86_64-pc-windows-msvc/release/bundle") {
+          Get-ChildItem -Recurse "src-tauri/target/x86_64-pc-windows-msvc/release/bundle"
+        } else {
+          echo "Bundle directory not found"
+        }
+        if (Test-Path "src-tauri/target/x86_64-pc-windows-msvc/release") {
+          Get-ChildItem "src-tauri/target/x86_64-pc-windows-msvc/release" -Filter "*.exe"
+        } else {
+          echo "Release directory not found"
+        }
+
     - name: Upload Windows Installers
       uses: actions/upload-artifact@v4
+      if: always()
       with:
         name: windows-installers
         path: |
           src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
           src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
         retention-days: 30
+        if-no-files-found: warn
 
     - name: Upload Windows Executable
       uses: actions/upload-artifact@v4
+      if: always()
       with:
         name: windows-executable
-        path: src-tauri/target/x86_64-pc-windows-msvc/release/*.exe
+        path: |
+          src-tauri/target/x86_64-pc-windows-msvc/release/*.exe
+          src-tauri/target/x86_64-pc-windows-msvc/release/app.exe
+          src-tauri/target/x86_64-pc-windows-msvc/release/bids-collector.exe
         retention-days: 30
+        if-no-files-found: warn
 
   build-info:
     runs-on: ubuntu-latest

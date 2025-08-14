@@ -1,5 +1,12 @@
 @echo off
-echo Building BIDS Collector Desktop App for Windows x64...
+echo Building BIDS Collector Des::  Build Windows desktop app
+echo Building Windows desktop application...
+npm run tauri:build:win
+if errorlevel 1 (
+    echo ERROR: Failed to build Windows desktop app
+    pause
+    exit /b 1
+) for Windows x64...
 echo.
 
 :: Check if Node.js is installed
