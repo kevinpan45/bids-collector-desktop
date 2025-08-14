@@ -36,80 +36,36 @@ jobs:
 
     - name: Debug environment
       run: |
-        echo "Node.js version: $(node --version)"
-        echo "npm version: $(npm --version)"  
-        echo "Available npm scripts:"
-        npm run
-        echo "Tauri CLI version:"
+        Write-Host "Node.js version:"
+        node --version
+        Write-Host "npm version:"
+        npm --version
+        Write-Host "Tauri CLI version:"
         npx tauri --version
-        echo "Current directory:"
+        Write-Host "Current directory:"
         Get-Location
-        echo "Directory contents:"
-        Get-ChildItem
-        echo "Checking package.json scripts:"
-        Get-Content package.json | Select-String -Pattern "scripts" -Context 10
-        echo "Checking for node_modules:"
-        if (Test-Path "node_modules") {
-          echo "node_modules directory exists"
-          echo "Key dependencies:"
-          if (Test-Path "node_modules/@sveltejs") { echo "✓ SvelteKit found" } else { echo "✗ SvelteKit missing" }
-          if (Test-Path "node_modules/@tauri-apps") { echo "✓ Tauri packages found" } else { echo "✗ Tauri packages missing" }
-          if (Test-Path "node_modules/vite") { echo "✓ Vite found" } else { echo "✗ Vite missing" }
-        } else {
-          echo "node_modules directory missing!"
-        }
-
-    - name: Test npm commands
-      run: |
-        echo "Testing basic npm functionality..."
-        echo "npm list --depth=0:"
-        npm list --depth=0 2>&1 || echo "npm list failed, continuing..."
-        echo "npm config list:"
-        npm config list
-        echo "Testing build command availability:"
-        npm run build --help 2>&1 || echo "build help failed, continuing..."
-        echo "Testing vite directly:"
-        npx vite --version
+        Write-Host "Checking dependencies..."
+        Test-Path "node_modules"
 
     - name: Build frontend
       run: |
-        echo "Starting frontend build..."
-        echo "Current directory: $(Get-Location)"
-        echo "Setting build environment..."
-        $env:CI = "true"
-        $env:NODE_ENV = "production"
-        echo "Checking build script..."
-        npm run build --verbose
-        if ($LASTEXITCODE -eq 0) {
-          echo "Frontend build completed successfully"
-          echo "Checking build output..."
-          if (Test-Path "build") {
-            echo "Build directory created successfully"
-            Get-ChildItem "build" | Select-Object Name, Length | Format-Table
-          } else {
-            echo "ERROR: Build directory was not created!"
-            exit 1
-          }
-        } else {
-          echo "Frontend build failed with exit code: $LASTEXITCODE"
-          echo "Attempting to show npm error log..."
-          if (Test-Path "$env:USERPROFILE\.npm\_logs") {
-            echo "NPM error logs:"
-            Get-ChildItem "$env:USERPROFILE\.npm\_logs" -Filter "*.log" | ForEach-Object { 
-              echo "=== $($_.Name) ==="
-              Get-Content $_.FullName | Select-Object -Last 50
-            }
-          }
-          exit $LASTEXITCODE
+        Write-Host "Starting frontend build..."
+        npm run build
+      env:
+        CI: true
+        NODE_ENV: production
+
+    - name: Verify build output
+      run: |
+        Write-Host "Checking build output..."
+        Test-Path "build"
+        if (Test-Path "build") {
+          Write-Host "Build directory found"
+          Get-ChildItem "build" | Select-Object -First 5
         }
 
     - name: Build Tauri app
-      run: |
-        echo "Starting Tauri build..."
-        echo "Build environment:"
-        echo "TAURI_SIGNING_PRIVATE_KEY is set: $($env:TAURI_SIGNING_PRIVATE_KEY -ne $null)"
-        echo "Running command: npm run tauri:build:win"
-        npm run tauri:build:win
+      run: npm run tauri:build:win
       env:
         TAURI_SIGNING_PRIVATE_KEY: ""
         TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
