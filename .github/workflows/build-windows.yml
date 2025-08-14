@@ -54,19 +54,6 @@ jobs:
           echo node_modules directory missing!
         )
 
-    - name: Debug environment
-      run: |
-        Write-Host "Node.js version:"
-        node --version
-        Write-Host "npm version:"
-        npm --version
-        Write-Host "Tauri CLI version:"
-        npx tauri --version
-        Write-Host "Current directory:"
-        Get-Location
-        Write-Host "Checking dependencies..."
-        Test-Path "node_modules"
-
     - name: Test npm access
       shell: cmd
       run: |
