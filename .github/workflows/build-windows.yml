@@ -27,13 +27,12 @@ jobs:
         targets: x86_64-pc-windows-msvc
 
     - name: Install frontend dependencies
-      run: npm install
+      run: |
+        npm cache clean --force
+        npm install
 
     - name: Build frontend
-      run: npm run build
-
-    - name: Install Tauri CLI
-      run: npm install -g @tauri-apps/cli@latest
+      run: npx vite build
 
     - name: Build Tauri app
       uses: tauri-apps/tauri-action@v0
@@ -45,5 +44,4 @@ jobs:
         releaseBody: 'See the assets to download this version and install.'
         releaseDraft: true
         prerelease: false
-        distPath: ../build
         args: --target x86_64-pc-windows-msvc
