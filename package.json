@@ -17,7 +17,7 @@
     "preview": "vite preview",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
-    "tauri:build:win": "tauri build --target x86_64-pc-windows-msvc",
+    "tauri:build:win": "tauri build --target x86_64-pc-windows-msvc --ci",
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:run": "vitest run"

@@ -14,6 +14,8 @@ jobs:
     env:
       TAURI_SIGNING_PRIVATE_KEY: ""
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+      RUST_BACKTRACE: 1
+      CI: true
     
     steps:
     - name: Checkout repository
@@ -30,10 +32,27 @@ jobs:
       with:
         targets: x86_64-pc-windows-msvc
 
-    - name: Install WebView2
+    - name: Verify Rust installation
+      shell: powershell
       run: |
-        Invoke-WebRequest -Uri "https://go.microsoft.com/fwlink/p/?LinkId=2124703" -OutFile "MicrosoftEdgeWebview2Setup.exe"
-        Start-Process -FilePath "MicrosoftEdgeWebview2Setup.exe" -ArgumentList "/silent", "/install" -Wait
+        Write-Host "Verifying Rust installation..."
+        rustc --version
+        cargo --version
+        rustup target list --installed
+
+    - name: Install WebView2
+      shell: powershell
+      run: |
+        Write-Host "Installing Microsoft Edge WebView2..."
+        try {
+          Invoke-WebRequest -Uri "https://go.microsoft.com/fwlink/p/?LinkId=2124703" -OutFile "MicrosoftEdgeWebview2Setup.exe" -UseBasicParsing
+          Write-Host "Downloaded WebView2 installer"
+          Start-Process -FilePath "MicrosoftEdgeWebview2Setup.exe" -ArgumentList "/silent", "/install" -Wait -NoNewWindow
+          Write-Host "WebView2 installation completed"
+        } catch {
+          Write-Host "WebView2 installation failed, but continuing build as it might already be installed"
+          Write-Host $_.Exception.Message
+        }
 
     - name: Rust cache
       uses: swatinem/rust-cache@v2
@@ -43,11 +62,53 @@ jobs:
     - name: Install frontend dependencies
       run: npm install
 
+    - name: Verify Tauri CLI
+      shell: powershell
+      run: |
+        Write-Host "Verifying Tauri CLI installation..."
+        npx tauri --version
+        Write-Host "Checking available Tauri commands..."
+        npx tauri --help
+
     - name: Build frontend
       run: npm run build
 
+    - name: Verify frontend build
+      shell: powershell
+      run: |
+        Write-Host "Checking frontend build output..."
+        if (Test-Path "build") {
+          Write-Host "Build directory exists"
+          Get-ChildItem "build" | Select-Object Name, Length
+        } else {
+          Write-Host "ERROR: Build directory not found!"
+          exit 1
+        }
+
     - name: Build Windows desktop app
-      run: npm run tauri:build:win
+      shell: powershell
+      run: |
+        Write-Host "Starting Tauri build process..."
+        Write-Host "Current directory: $(Get-Location)"
+        Write-Host "Available npm scripts:"
+        npm run --silent
+        Write-Host "Running: npm run tauri:build:win"
+        
+        # Set error handling
+        $ErrorActionPreference = "Continue"
+        
+        try {
+          npm run tauri:build:win
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "Build failed with exit code $LASTEXITCODE"
+            exit $LASTEXITCODE
+          }
+          Write-Host "Build completed successfully!"
+        } catch {
+          Write-Host "Build failed with exception: $($_.Exception.Message)"
+          Write-Host "Stack trace: $($_.ScriptStackTrace)"
+          exit 1
+        }
 
     - name: List build outputs
       shell: powershell
