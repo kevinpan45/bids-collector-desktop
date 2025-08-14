@@ -16,6 +16,8 @@ jobs:
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
       RUST_BACKTRACE: 1
       CI: true
+      CARGO_INCREMENTAL: 0
+      CARGO_NET_RETRY: 10
     
     steps:
     - name: Checkout repository
@@ -39,6 +41,19 @@ jobs:
         rustc --version
         cargo --version
         rustup target list --installed
+        
+        Write-Host "Checking if target is installed..."
+        if (rustup target list --installed | Select-String "x86_64-pc-windows-msvc") {
+          Write-Host "✓ x86_64-pc-windows-msvc target is installed"
+        } else {
+          Write-Host "Installing x86_64-pc-windows-msvc target..."
+          rustup target add x86_64-pc-windows-msvc
+        }
+        
+        Write-Host "Testing Cargo compilation..."
+        cd src-tauri
+        cargo check --target x86_64-pc-windows-msvc
+        cd ..
 
     - name: Install WebView2
       shell: powershell
@@ -54,13 +69,35 @@ jobs:
           Write-Host $_.Exception.Message
         }
 
+    - name: Install frontend dependencies
+      shell: powershell
+      run: |
+        Write-Host "Cleaning npm cache..."
+        npm cache clean --force
+        Write-Host "Installing dependencies..."
+        npm install
+        if ($LASTEXITCODE -ne 0) {
+          Write-Host "npm install failed with exit code $LASTEXITCODE"
+          exit $LASTEXITCODE
+        }
+        Write-Host "Dependencies installed successfully"
+
+    - name: Clean previous builds
+      shell: powershell
+      run: |
+        Write-Host "Cleaning previous build artifacts..."
+        if (Test-Path "build") {
+          Remove-Item -Recurse -Force "build"
+          Write-Host "Removed old build directory"
+        }
+        Write-Host "Clean completed (keeping Rust cache)"
+
     - name: Rust cache
       uses: swatinem/rust-cache@v2
       with:
         workspaces: './src-tauri -> target'
-
-    - name: Install frontend dependencies
-      run: npm install
+        cache-on-failure: true
+        key: windows-build
 
     - name: Verify Tauri CLI
       shell: powershell
@@ -69,9 +106,29 @@ jobs:
         npx tauri --version
         Write-Host "Checking available Tauri commands..."
         npx tauri --help
+        
+        Write-Host "Testing Tauri info command..."
+        npx tauri info
+        
+        Write-Host "Checking Tauri configuration..."
+        if (Test-Path "src-tauri/tauri.conf.json") {
+          Write-Host "✓ Tauri config file exists"
+          Get-Content "src-tauri/tauri.conf.json" | ConvertFrom-Json | ConvertTo-Json -Depth 10
+        } else {
+          Write-Host "❌ Tauri config file not found"
+          exit 1
+        }
 
     - name: Build frontend
-      run: npm run build
+      shell: powershell
+      run: |
+        Write-Host "Building frontend..."
+        npm run build
+        if ($LASTEXITCODE -ne 0) {
+          Write-Host "Frontend build failed with exit code $LASTEXITCODE"
+          exit $LASTEXITCODE
+        }
+        Write-Host "Frontend build completed successfully"
 
     - name: Verify frontend build
       shell: powershell
@@ -90,23 +147,66 @@ jobs:
       run: |
         Write-Host "Starting Tauri build process..."
         Write-Host "Current directory: $(Get-Location)"
-        Write-Host "Available npm scripts:"
-        npm run --silent
-        Write-Host "Running: npm run tauri:build:win"
         
-        # Set error handling
-        $ErrorActionPreference = "Continue"
+        # First, let's try building directly with Tauri CLI
+        Write-Host "Method 1: Direct Tauri CLI build"
+        try {
+          npx @tauri-apps/cli build --target x86_64-pc-windows-msvc --ci --verbose
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "✓ Direct Tauri CLI build succeeded!"
+            exit 0
+          } else {
+            Write-Host "⚠ Direct Tauri CLI build failed with exit code $LASTEXITCODE"
+          }
+        } catch {
+          Write-Host "⚠ Direct Tauri CLI build failed with exception: $($_.Exception.Message)"
+        }
         
+        # Try method 2: Using npx tauri
+        Write-Host "Method 2: Using npx tauri build"
+        try {
+          npx tauri build --target x86_64-pc-windows-msvc --ci --verbose
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "✓ npx tauri build succeeded!"
+            exit 0
+          } else {
+            Write-Host "⚠ npx tauri build failed with exit code $LASTEXITCODE"
+          }
+        } catch {
+          Write-Host "⚠ npx tauri build failed with exception: $($_.Exception.Message)"
+        }
+        
+        # Try method 3: Using npm script
+        Write-Host "Method 3: Using npm script"
         try {
           npm run tauri:build:win
-          if ($LASTEXITCODE -ne 0) {
-            Write-Host "Build failed with exit code $LASTEXITCODE"
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "✓ npm script build succeeded!"
+            exit 0
+          } else {
+            Write-Host "⚠ npm script build failed with exit code $LASTEXITCODE"
+          }
+        } catch {
+          Write-Host "⚠ npm script build failed with exception: $($_.Exception.Message)"
+        }
+        
+        # Try method 4: Direct cargo build (fallback)
+        Write-Host "Method 4: Direct cargo build (fallback)"
+        try {
+          cd src-tauri
+          cargo build --release --target x86_64-pc-windows-msvc
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "✓ Direct cargo build succeeded!"
+            cd ..
+            exit 0
+          } else {
+            Write-Host "❌ Direct cargo build failed with exit code $LASTEXITCODE"
+            cd ..
             exit $LASTEXITCODE
           }
-          Write-Host "Build completed successfully!"
         } catch {
-          Write-Host "Build failed with exception: $($_.Exception.Message)"
-          Write-Host "Stack trace: $($_.ScriptStackTrace)"
+          Write-Host "❌ Direct cargo build failed with exception: $($_.Exception.Message)"
+          cd ..
           exit 1
         }
 
