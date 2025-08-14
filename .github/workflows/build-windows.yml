@@ -30,10 +30,17 @@ jobs:
       run: |
         npm cache clean --force
         npm install
+        dir node_modules\.bin
         npm list vite
 
     - name: Build frontend
-      run: npm run build
+      run: |
+        echo "Checking node_modules/.bin/vite"
+        if exist "node_modules\.bin\vite.cmd" (
+          node_modules\.bin\vite.cmd build
+        ) else (
+          npx --yes vite@^5.0.0 build
+        )
 
     - name: Build Tauri app
       uses: tauri-apps/tauri-action@v0
