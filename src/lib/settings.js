@@ -37,7 +37,8 @@ const DEFAULT_SETTINGS = {
     maxConcurrentDownloads: 3,
     chunkSize: 1024 * 1024, // 1MB chunks
     bufferSize: 1024 * 1024 * 10, // 10MB buffer
-    verifyChecksum: true
+    verifyChecksum: true,
+    autoStartTasks: true // Automatically start collection tasks after creation
   },
   ui: {
     theme: 'auto', // 'light', 'dark', 'auto'

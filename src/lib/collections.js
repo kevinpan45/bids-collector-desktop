@@ -136,6 +136,73 @@ export async function createCollectionTask(dataset, storageLocations) {
 }
 
 /**
+ * Create separate collection tasks for each storage location
+ * @param {Object} dataset - The dataset to download
+ * @param {Array} storageLocations - Selected storage locations
+ * @returns {Array} Array of created tasks
+ */
+export async function createCollectionTasksForLocations(dataset, storageLocations) {
+  const createdTasks = [];
+  
+  try {
+    // Generate the download path using DOI
+    const downloadPath = await generateDownloadPath(dataset.id, dataset.version, dataset.provider, dataset.doi);
+    
+    // Load existing tasks
+    const config = await loadConfig('collections', { tasks: [] });
+    const tasks = config.tasks || [];
+    
+    // Create a task for each storage location
+    for (const location of storageLocations) {
+      const newTask = {
+        id: `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        name: `Download: ${dataset.name} → ${location.name}`,
+        datasetId: dataset.id,
+        datasetName: dataset.name,
+        datasetSize: dataset.size,
+        datasetDoi: dataset.doi,
+        datasetProvider: dataset.provider,
+        datasetVersion: dataset.version,
+        downloadPath: downloadPath,
+        storageLocations: [{
+          id: location.id,
+          name: location.name,
+          type: location.type,
+          path: location.path || location.bucketName
+        }],
+        status: 'pending',
+        progress: 0,
+        createdAt: new Date().toISOString(),
+        startedAt: null,
+        completedAt: null,
+        totalSize: 0,
+        downloadedSize: 0,
+        speed: 0,
+        errorMessage: null
+      };
+      
+      // Add new task at the beginning
+      tasks.unshift(newTask);
+      createdTasks.push(newTask);
+      
+      console.log(`Created collection task: ${newTask.name} -> ${downloadPath}`);
+      
+      // Small delay to ensure unique timestamps
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    
+    // Save all updated tasks
+    await saveConfig('collections', { tasks });
+    
+    console.log(`Created ${createdTasks.length} collection tasks for dataset: ${dataset.name}`);
+    return createdTasks;
+  } catch (error) {
+    console.error('Failed to create collection tasks:', error);
+    throw error;
+  }
+}
+
+/**
  * Update a collection task status and progress
  * @param {string} taskId - The task ID
  * @param {Object} updates - Updates to apply

@@ -3,7 +3,8 @@
   import axios from 'axios';
   import toast from 'svelte-french-toast';
   import { loadConfig } from '$lib/storage.js';
-  import { createCollectionTask, generateDownloadPath } from '$lib/collections.js';
+  import { createCollectionTasksForLocations, generateDownloadPath, startTaskDownload } from '$lib/collections.js';
+  import { getSetting } from '$lib/settings.js';
   
   let datasets = [];
   let loading = true;
@@ -162,21 +163,55 @@
     
     isDownloading = true;
     try {
-      // Create collection task
-      const collectionTask = await createCollectionTask(selectedDataset, selectedLocations);
+      // Create separate collection tasks for each location
+      const collectionTasks = await createCollectionTasksForLocations(selectedDataset, selectedLocations);
       
-      console.log(`Created collection task: ${collectionTask.name}`);
-      toast.success(`Collection task created: ${selectedDataset.name}`);
+      console.log(`Created ${collectionTasks.length} collection tasks for dataset: ${selectedDataset.name}`);
+      toast.success(`Created ${collectionTasks.length} collection task${collectionTasks.length > 1 ? 's' : ''} for ${selectedDataset.name}`);
       
-      // Show download started message
-      toast.success(`Download queued to ${selectedLocations.length} location(s). Check Collections page to track progress.`, {
-        duration: 5000
-      });
+      // Check if auto-start is enabled in settings
+      const autoStartEnabled = getSetting('download.autoStartTasks', true);
+      
+      if (autoStartEnabled) {
+        // Auto-start all collection tasks
+        let startedCount = 0;
+        let failedCount = 0;
+        
+        for (const task of collectionTasks) {
+          try {
+            await startTaskDownload(task.id);
+            console.log(`Auto-started collection task: ${task.name}`);
+            startedCount++;
+          } catch (startError) {
+            console.warn(`Failed to auto-start collection task ${task.name}:`, startError);
+            failedCount++;
+          }
+        }
+        
+        if (startedCount === collectionTasks.length) {
+          toast.success(`All ${startedCount} download${startedCount > 1 ? 's' : ''} started automatically! Track progress in Collections page.`, {
+            duration: 5000
+          });
+        } else if (startedCount > 0) {
+          toast.success(`${startedCount} of ${collectionTasks.length} downloads started automatically. Check Collections page for details.`, {
+            duration: 5000
+          });
+        } else {
+          toast.success(`Collection tasks created but failed to auto-start. You can manually start them from the Collections page.`, {
+            duration: 5000
+          });
+        }
+      } else {
+        // Auto-start is disabled
+        toast.success(`${collectionTasks.length} collection task${collectionTasks.length > 1 ? 's' : ''} created. Go to Collections page to start the downloads.`, {
+          duration: 5000
+        });
+      }
       
       closeDownloadModal();
     } catch (error) {
-      console.error('Failed to create collection task:', error);
-      toast.error(`Failed to create collection task: ${error.message}`);
+      console.error('Failed to create collection tasks:', error);
+      toast.error(`Failed to create collection tasks: ${error.message}`);
     } finally {
       isDownloading = false;
     }
@@ -618,7 +653,7 @@
                 {selectedLocationIds.length} location{selectedLocationIds.length > 1 ? 's' : ''} selected
               </div>
               <div class="text-xs text-base-content/60 mt-1">
-                Dataset will be downloaded to all selected locations simultaneously
+                {selectedLocationIds.length > 1 ? `${selectedLocationIds.length} separate collection tasks will be created` : 'One collection task will be created'}
               </div>
             </div>
           {/if}
@@ -631,7 +666,7 @@
             disabled={selectedLocationIds.length === 0 || isDownloading}
             on:click={startDownload}
           >
-            {isDownloading ? 'Creating Task...' : `Create Collection Task${selectedLocationIds.length > 1 ? ` (${selectedLocationIds.length} Locations)` : ''}`}
+            {isDownloading ? 'Creating Tasks...' : `Create Collection Task${selectedLocationIds.length > 1 ? `s (${selectedLocationIds.length} Tasks)` : ''}`}
           </button>
           <button class="btn" on:click={closeDownloadModal} disabled={isDownloading}>
             Cancel

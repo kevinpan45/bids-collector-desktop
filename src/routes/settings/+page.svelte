@@ -4,6 +4,7 @@
   import toast from 'svelte-french-toast';
   import { 
     loadSettings, 
+    saveSettings,
     validateHttpProxySettings,
     validateHttpsProxySettings,
     testHttpProxyConnection,
@@ -24,6 +25,11 @@
   onMount(() => {
     loadSettingsData();
   });
+  
+  // Auto-save settings when they change
+  $: if (settings && !loading) {
+    saveSettings(settings);
+  }
   
   function loadSettingsData() {
     try {
@@ -417,6 +423,38 @@
                 </div>
               {/if}
             </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Download Settings -->
+      <div class="card bg-base-100 shadow-xl">
+        <div class="card-body">
+          <h2 class="card-title text-xl mb-4">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
+            </svg>
+            Download Settings
+          </h2>
+          <p class="text-sm text-base-content/60 mb-4">
+            Configure download behavior and automatic task management.
+          </p>
+          
+          <!-- Auto-start Collection Tasks -->
+          <div class="form-control">
+            <label class="label cursor-pointer">
+              <span class="label-text">
+                <div class="flex flex-col">
+                  <span class="font-medium">Auto-start collection tasks</span>
+                  <span class="text-sm text-base-content/60">Automatically start downloads when collection tasks are created</span>
+                </div>
+              </span>
+              <input 
+                type="checkbox" 
+                class="toggle toggle-primary" 
+                bind:checked={settings.download.autoStartTasks}
+              />
+            </label>
           </div>
         </div>
       </div>
