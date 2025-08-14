@@ -28,7 +28,7 @@ jobs:
 
     - name: Install frontend dependencies
       run: |
-        npm ci
+        npm install --registry https://registry.npmjs.org/
         npm list --depth=0
 
     - name: Build frontend
