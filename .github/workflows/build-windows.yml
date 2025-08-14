@@ -34,6 +34,26 @@ jobs:
     - name: Install dependencies
       run: npm install
 
+    - name: Verify installation
+      shell: cmd
+      run: |
+        echo Verifying npm installation...
+        if exist "node_modules" (
+          echo node_modules directory exists
+          if exist "node_modules\.bin\vite.cmd" (
+            echo Vite binary found
+          ) else (
+            echo Vite binary missing
+          )
+          if exist "node_modules\@sveltejs" (
+            echo SvelteKit found
+          ) else (
+            echo SvelteKit missing
+          )
+        ) else (
+          echo node_modules directory missing!
+        )
+
     - name: Debug environment
       run: |
         Write-Host "Node.js version:"
@@ -47,22 +67,37 @@ jobs:
         Write-Host "Checking dependencies..."
         Test-Path "node_modules"
 
-    - name: Build frontend
+    - name: Test npm access
+      shell: cmd
       run: |
-        Write-Host "Starting frontend build..."
+        echo Testing npm commands...
+        npm --version
+        echo Testing script access...
+        npm run
+        echo Available scripts listed above
+
+    - name: Build frontend
+      shell: cmd
+      run: |
+        echo Starting frontend build...
+        echo Current directory: %CD%
+        echo PATH: %PATH%
+        echo Running npm run build...
         npm run build
       env:
         CI: true
         NODE_ENV: production
 
     - name: Verify build output
+      shell: cmd
       run: |
-        Write-Host "Checking build output..."
-        Test-Path "build"
-        if (Test-Path "build") {
-          Write-Host "Build directory found"
-          Get-ChildItem "build" | Select-Object -First 5
-        }
+        echo Checking build output...
+        if exist "build" (
+          echo Build directory found
+          dir build
+        ) else (
+          echo Build directory not found!
+        )
 
     - name: Build Tauri app
       run: npm run tauri:build:win
