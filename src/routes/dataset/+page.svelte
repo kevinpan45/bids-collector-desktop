@@ -50,7 +50,7 @@
       datasets = data.records.map(dataset => ({
         id: dataset.id,
         name: dataset.name || 'Unnamed Dataset',
-        description: dataset.description || `Dataset DOI: ${dataset.doi}` || 'No description available',
+        description: dataset.description || `DOI: ${dataset.doi}` || 'No description available',
         modalities: ['unknown'], // API doesn't provide modalities, could be enhanced later
         provider: dataset.provider || 'OpenNeuro',
         participants: dataset.participants === -1 ? 'Unknown' : (dataset.participants || 'N/A'), // Use participants field from API response
@@ -428,7 +428,7 @@
                     <div class="flex items-center space-x-3">
                       <div>
                         <div class="font-bold">{dataset.name}</div>
-                        <div class="text-sm text-base-content/60 max-w-xs truncate">
+                        <div class="text-sm text-base-content/60 max-w-xs">
                           {dataset.description}
                         </div>
                       </div>
