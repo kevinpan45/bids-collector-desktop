@@ -28,8 +28,7 @@ jobs:
 
     - name: Install frontend dependencies
       run: |
-        npm install --registry https://registry.npmjs.org/
-        npm list --depth=0
+        npm install
 
     - name: Build frontend
       run: npm run build
