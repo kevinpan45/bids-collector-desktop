@@ -126,41 +126,63 @@
     return Math.round((numBytes / Math.pow(k, i)) * 100) / 100 + ' ' + units[i];
   }
   
+  // Helper function to check if DOI is in standard format
+  function isDoiFormat(doi) {
+    if (!doi) return false;
+    // Check if DOI follows standard format (starts with "10." and contains "/")
+    return doi.startsWith('10.') && doi.includes('/');
+  }
+
   async function handleViewDataset(dataset) {
     console.log('View dataset details:', dataset.name);
     
-    // Open DOI URL in browser with confirmation
-    if (dataset.doi) {
-      const doiUrl = `https://doi.org/${dataset.doi}`;
-      
+    // Generate appropriate link based on provider and DOI format
+    let linkUrl = null;
+    
+    if (dataset.provider === "OpenNeuro") {
+      if (isDoiFormat(dataset.doi)) {
+        linkUrl = `https://doi.org/${dataset.doi}`;
+      } else {
+        linkUrl = `https://openneuro.org/datasets/${dataset.doi}/versions/${dataset.version}`;
+      }
+    } else if (dataset.provider === "CCNDC") {
+      linkUrl = `https://doi.org/${dataset.doi}`;
+    } else {
+      // Default fallback for other providers
+      if (dataset.doi) {
+        linkUrl = `https://doi.org/${dataset.doi}`;
+      }
+    }
+    
+    if (linkUrl) {
       // Show confirmation dialog like VS Code external link UX
       const userConfirmed = confirm(
-        `Do you want to open this external link in your browser?\n\n${doiUrl}\n\nThis will open the dataset's DOI page in your default browser.`
+        `Do you want to open this external link in your browser?\n\n${linkUrl}\n\nThis will open the dataset's details page in your default browser.`
       );
       
       if (userConfirmed) {
-        console.log('User confirmed - Opening DOI URL:', doiUrl);
+        console.log('User confirmed - Opening URL:', linkUrl);
         
         try {
           if (isTauri) {
             // Use Tauri shell API to open URL in system browser
-            await open(doiUrl);
+            await open(linkUrl);
             toast.success('Opening link in your default browser...');
           } else {
             // Use standard web API for browser mode
-            window.open(doiUrl, '_blank');
+            window.open(linkUrl, '_blank');
             toast.success('Opening link in new tab...');
           }
         } catch (error) {
           console.error('Failed to open URL:', error);
-          toast.error('Failed to open DOI URL');
+          toast.error('Failed to open dataset link');
         }
       } else {
         console.log('User cancelled opening external link');
       }
     } else {
-      console.warn('No DOI available for dataset:', dataset.name);
-      toast.error('No DOI available for this dataset');
+      console.warn('No valid link available for dataset:', dataset.name);
+      toast.error('No link available for this dataset');
     }
   }
   
