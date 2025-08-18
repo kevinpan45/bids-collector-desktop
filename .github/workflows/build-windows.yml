@@ -12,6 +12,8 @@ on:
 jobs:
   build-windows:
     runs-on: windows-latest
+    permissions:
+      contents: write
     
     steps:
     - name: Checkout repository
@@ -41,7 +43,7 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tagName: latest
+        releaseId: latest
         releaseName: 'Latest Build'
         releaseBody: |
           🚧 **Latest Development Build**
@@ -51,11 +53,11 @@ jobs:
           **Branch**: ${{ github.ref_name }}
           **Commit**: ${{ github.sha }}
           **Build**: #${{ github.run_number }}
+          **Updated**: ${{ github.event.head_commit.timestamp }}
           
           ⚠️ This build is automatically updated and may contain unstable features.
         releaseDraft: false
         prerelease: true
-        includeUpdaterJson: false
         args: --target x86_64-pc-windows-msvc
 
     - name: Build Tauri app (release build)
