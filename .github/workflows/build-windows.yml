@@ -3,6 +3,8 @@ name: Build Windows Desktop App
 on:
   push:
     branches: [ main, develop ]
+    tags:
+      - 'v*'
   pull_request:
     branches: [ main ]
   workflow_dispatch:
@@ -33,14 +35,51 @@ jobs:
     - name: Build frontend
       run: npm run build
 
-    - name: Build Tauri app
+    - name: Build Tauri app (latest build)
+      if: github.ref_type != 'tag'
       uses: tauri-apps/tauri-action@v0
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tagName: app-v__VERSION__ # the action automatically replaces \_\_VERSION\_\_ with the app version
-        releaseName: 'App v__VERSION__'
-        releaseBody: 'See the assets to download this version and install.'
-        releaseDraft: true
+        tagName: latest
+        releaseName: 'Latest Build'
+        releaseBody: |
+          🚧 **Latest Development Build**
+          
+          This is the latest build from the main branch.
+          
+          **Branch**: ${{ github.ref_name }}
+          **Commit**: ${{ github.sha }}
+          **Build**: #${{ github.run_number }}
+          
+          ⚠️ This build is automatically updated and may contain unstable features.
+        releaseDraft: false
+        prerelease: true
+        includeUpdaterJson: false
+        args: --target x86_64-pc-windows-msvc
+
+    - name: Build Tauri app (release build)
+      if: github.ref_type == 'tag'
+      uses: tauri-apps/tauri-action@v0
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tagName: ${{ github.ref_name }}
+        releaseName: 'BIDS Collector ${{ github.ref_name }}'
+        releaseBody: |
+          🎉 **BIDS Collector ${{ github.ref_name }}**
+          
+          ## Installation
+          
+          **Windows:**
+          - Download the `.msi` file for Windows Installer  
+          - Download the `.exe` file for NSIS Installer
+          
+          ## What's Changed
+          
+          See the commits included in this release for detailed changes.
+          
+          **Full Changelog**: https://github.com/${{ github.repository }}/commits/${{ github.ref_name }}
+        releaseDraft: false
         prerelease: false
         args: --target x86_64-pc-windows-msvc
