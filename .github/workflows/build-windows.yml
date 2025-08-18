@@ -36,6 +36,8 @@ jobs:
 
     - name: Build frontend
       run: npm run build
+      env:
+        VITE_API_SERVER: https://api.kp45.icu
 
     - name: Build Tauri app (latest build)
       if: github.ref_type != 'tag'
