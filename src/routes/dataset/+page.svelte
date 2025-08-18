@@ -5,6 +5,10 @@
   import { loadConfig } from '$lib/storage.js';
   import { createCollectionTasksForLocations, generateDownloadPath, startTaskDownload } from '$lib/collections.js';
   import { getSetting } from '$lib/settings.js';
+  import { open } from '@tauri-apps/plugin-shell';
+  
+  // Check if we're running in Tauri
+  const isTauri = typeof window !== 'undefined' && window.__TAURI__ !== undefined;
   
   let datasets = [];
   let loading = true;
@@ -122,9 +126,42 @@
     return Math.round((numBytes / Math.pow(k, i)) * 100) / 100 + ' ' + units[i];
   }
   
-  function handleViewDataset(dataset) {
+  async function handleViewDataset(dataset) {
     console.log('View dataset details:', dataset.name);
-    // Navigate to dataset detail view
+    
+    // Open DOI URL in browser with confirmation
+    if (dataset.doi) {
+      const doiUrl = `https://doi.org/${dataset.doi}`;
+      
+      // Show confirmation dialog like VS Code external link UX
+      const userConfirmed = confirm(
+        `Do you want to open this external link in your browser?\n\n${doiUrl}\n\nThis will open the dataset's DOI page in your default browser.`
+      );
+      
+      if (userConfirmed) {
+        console.log('User confirmed - Opening DOI URL:', doiUrl);
+        
+        try {
+          if (isTauri) {
+            // Use Tauri shell API to open URL in system browser
+            await open(doiUrl);
+            toast.success('Opening link in your default browser...');
+          } else {
+            // Use standard web API for browser mode
+            window.open(doiUrl, '_blank');
+            toast.success('Opening link in new tab...');
+          }
+        } catch (error) {
+          console.error('Failed to open URL:', error);
+          toast.error('Failed to open DOI URL');
+        }
+      } else {
+        console.log('User cancelled opening external link');
+      }
+    } else {
+      console.warn('No DOI available for dataset:', dataset.name);
+      toast.error('No DOI available for this dataset');
+    }
   }
   
   async function handleDownloadDataset(dataset) {

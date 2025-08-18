@@ -32,6 +32,8 @@
     "http:allow-fetch",
     "http:allow-fetch-send",
     "http:allow-fetch-read-body",
+    "shell:default",
+    "shell:allow-open",
     {
       "identifier": "http:default",
       "allow": [
