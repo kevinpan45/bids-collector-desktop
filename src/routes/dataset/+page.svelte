@@ -394,7 +394,6 @@
                   <!-- svelte-ignore a11y-no-noninteractive-tabindex -->
                   <ul tabindex="0" class="dropdown-content z-[1] menu p-2 shadow bg-base-100 rounded-box w-52">
                     <li><button type="button" on:click={() => handleViewDataset(dataset)}>View Details</button></li>
-                    <li><button type="button" on:click={() => handleDownloadDataset(dataset)}>Download Dataset</button></li>
                   </ul>
                 </div>
               </div>
@@ -499,7 +498,6 @@
                         <!-- svelte-ignore a11y-no-noninteractive-tabindex -->
                         <ul tabindex="0" class="dropdown-content z-[1] menu p-2 shadow bg-base-100 rounded-box w-48">
                           <li><button type="button" on:click={() => handleViewDataset(dataset)}>View Details</button></li>
-                          <li><button type="button" on:click={() => handleDownloadDataset(dataset)}>Download Dataset</button></li>
                         </ul>
                       </div>
                     </div>
