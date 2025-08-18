@@ -1,0 +1,8 @@
+# Vibe coding files and AI-generated documentation
+# This folder contains AI-generated documentation and vibe coding sessions
+
+# Keep the vibe alive but ignore temporary files
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
