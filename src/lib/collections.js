@@ -305,21 +305,12 @@ export async function startTaskDownload(taskId) {
     }
     
     console.log(`Starting background download for task: ${task.name}`);
-    console.log(`Task provider: ${task.datasetProvider}`);
-    console.log(`Task storage locations:`, task.storageLocations);
     
     // Load storage configuration to find source and destination locations
-    console.log('Loading storage configuration...');
     const storageConfig = await loadConfig('storage', { storageLocations: [] });
-    console.log('Raw storage config:', storageConfig);
-    
     const storageLocations = storageConfig?.storageLocations || [];
     
-    console.log(`Loaded storage locations:`, storageLocations);
-    console.log(`Storage locations count: ${storageLocations.length}`);
-    
     if (storageLocations.length === 0) {
-      console.error('No storage locations found in config. Raw config:', JSON.stringify(storageConfig, null, 2));
       throw new Error('No storage locations configured. Please configure storage locations first.');
     }
     

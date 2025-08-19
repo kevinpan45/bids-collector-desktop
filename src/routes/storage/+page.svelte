@@ -2,9 +2,10 @@
   import { onMount, tick } from 'svelte';
   import { saveConfig, loadConfig } from '$lib/storage.js';
   import { createS3Client } from '$lib/s3Client.js';
+  import { open } from '@tauri-apps/plugin-dialog';
   
   // Tauri APIs
-  let tauriOpen = null;
+  let tauriOpen = open;
   
   // Start with empty storage locations to demonstrate the "no locations" state
   let storageLocations = [];
@@ -48,15 +49,8 @@
   
   // Initialize Tauri APIs on mount
   onMount(async () => {
-    try {
-      // Dynamically import Tauri APIs only in Tauri environment
-      if (typeof window !== 'undefined' && window.__TAURI_INTERNALS__) {
-        const { open } = await import('@tauri-apps/plugin-dialog');
-        tauriOpen = open;
-      }
-    } catch (error) {
-      console.warn('Tauri APIs not available, using web fallbacks:', error);
-    }
+    // tauriOpen is already set via static import, no need to import again
+    console.log('Tauri dialog API available:', !!tauriOpen);
     
     // Load stored configuration
     await loadStorageConfig();
@@ -123,10 +117,8 @@
         throw new Error('Save operation returned false');
       }
     } catch (error) {
-      console.error('Failed to save storage config:', error);
-      // Only show notification for save failures if it's a critical error
-      // Most save operations will fall back to localStorage automatically
-      console.log('Storage configuration may have been saved to browser storage as fallback');
+      console.error('Failed to save storage configuration:', error);
+      showNotification('error', 'Failed to save storage configuration. Please try again.');
     }
   }
   
@@ -389,15 +381,7 @@
   // Handle directory picker for local storage
   async function handleBrowseDirectory() {
     try {
-      // Try to use the modern File System Access API (supported in Chrome-based browsers)
-      if ('showDirectoryPicker' in window) {
-        const dirHandle = await window.showDirectoryPicker();
-        addLocationForm.path = dirHandle.name; // This is just the directory name, not full path
-        showNotification('success', 'Directory selected successfully!');
-        return;
-      }
-      
-      // Fallback: Try Tauri APIs if available
+      // Use Tauri dialog API for proper full path support
       if (tauriOpen) {
         const selected = await tauriOpen({
           directory: true,
@@ -407,11 +391,24 @@
         
         if (selected) {
           addLocationForm.path = selected;
-          showNotification('success', 'Directory selected successfully!');
+          showNotification('success', `Directory selected: ${selected}`);
+          return;
+        } else {
           return;
         }
       }
       
+      // Fallback: Try the modern File System Access API (but this has limitations)
+      if ('showDirectoryPicker' in window) {
+        console.warn('Using File System Access API - path may not be complete');
+        const dirHandle = await window.showDirectoryPicker();
+        // Note: This only gets the directory name, not the full path
+        // This is a limitation of the File System Access API
+        addLocationForm.path = dirHandle.name;
+        showNotification('warning', `Directory name: ${dirHandle.name}. Please verify and enter the full path manually if needed.`);
+        return;
+      }
+
       // Final fallback - inform user to enter path manually
       showNotification('info', 'Please enter the directory path manually in the text field above.');
       
