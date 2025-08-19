@@ -4,7 +4,7 @@ use regex::Regex;
 use tauri::Emitter;
 
 mod s3_client;
-use s3_client::{test_s3_connection, S3ConnectionConfig, S3ConnectionResult};
+use s3_client::test_s3_connection;
 
 /// Extract OpenNeuro accession number from DOI or path
 /// Example: "10.18112_openneuro.ds006486.v1.0.0" -> "ds006486"
@@ -635,7 +635,6 @@ async fn upload_to_s3_compatible(
 ) -> Result<(), String> {
     use std::collections::HashMap;
     use chrono::Utc;
-    use hmac::Hmac;
     use sha2::{Sha256, Digest};
     use url::Url;
     
@@ -729,7 +728,6 @@ fn generate_aws_signature_v4_simple(
     timestamp: &chrono::DateTime<chrono::Utc>,
     content_hash: &str,
 ) -> Result<String, String> {
-    use hmac::Hmac;
     use sha2::{Sha256, Digest};
     use url::Url;
     
@@ -809,99 +807,6 @@ fn generate_aws_signature_v4_simple(
 }
 
 fn hmac_sha256_simple(key: &[u8], data: &[u8]) -> Result<Vec<u8>, String> {
-    use hmac::{Hmac, Mac};
-    use sha2::Sha256;
-    
-    let mut mac = Hmac::<Sha256>::new_from_slice(key)
-        .map_err(|e| format!("HMAC error: {}", e))?;
-    mac.update(data);
-    Ok(mac.finalize().into_bytes().to_vec())
-}
-
-fn generate_aws_signature_v4(
-    method: &str,
-    url: &str,
-    headers: &std::collections::HashMap<String, String>,
-    access_key: &str,
-    secret_key: &str,
-    region: &str,
-    timestamp: &chrono::DateTime<chrono::Utc>,
-    content_hash: &str,
-) -> Result<String, String> {
-    use hmac::Hmac;
-    use sha2::{Sha256, Digest};
-    use url::Url;
-    
-    let parsed_url = Url::parse(url).map_err(|e| format!("Invalid URL: {}", e))?;
-    
-    // Create canonical request
-    let canonical_uri = parsed_url.path();
-    let canonical_query = parsed_url.query().unwrap_or("");
-    
-    // Create canonical headers (sorted)
-    let mut canonical_headers = String::new();
-    let mut signed_headers = Vec::new();
-    
-    let mut sorted_headers: Vec<_> = headers.iter().collect();
-    sorted_headers.sort_by_key(|&(k, _)| k.to_lowercase());
-    
-    for (key, value) in sorted_headers {
-        let key_lower = key.to_lowercase();
-        canonical_headers.push_str(&format!("{}:{}\n", key_lower, value.trim()));
-        signed_headers.push(key_lower);
-    }
-    
-    let signed_headers_str = signed_headers.join(";");
-    
-    // Create canonical request
-    let canonical_request = format!(
-        "{}\n{}\n{}\n{}\n{}\n{}",
-        method,
-        canonical_uri,
-        canonical_query,
-        canonical_headers,
-        signed_headers_str,
-        content_hash
-    );
-    
-    // Create string to sign
-    let date = timestamp.format("%Y%m%d").to_string();
-    let timestamp_str = timestamp.format("%Y%m%dT%H%M%SZ").to_string();
-    let credential_scope = format!("{}/{}/s3/aws4_request", date, region);
-    
-    let mut hasher = Sha256::new();
-    hasher.update(canonical_request.as_bytes());
-    let canonical_request_hash = hex::encode(hasher.finalize());
-    
-    let string_to_sign = format!(
-        "AWS4-HMAC-SHA256\n{}\n{}\n{}",
-        timestamp_str,
-        credential_scope,
-        canonical_request_hash
-    );
-    
-    // Calculate signature
-    let date_key = hmac_sha256(format!("AWS4{}", secret_key).as_bytes(), date.as_bytes())?;
-    let date_region_key = hmac_sha256(&date_key, region.as_bytes())?;
-    let date_region_service_key = hmac_sha256(&date_region_key, b"s3")?;
-    let signing_key = hmac_sha256(&date_region_service_key, b"aws4_request")?;
-    
-    let signature = hmac_sha256(&signing_key, string_to_sign.as_bytes())?;
-    let signature_hex = hex::encode(signature);
-    
-    // Create authorization header
-    let authorization = format!(
-        "AWS4-HMAC-SHA256 Credential={}/{}, SignedHeaders={}, Signature={}",
-        access_key,
-        credential_scope,
-        signed_headers_str,
-        signature_hex
-    );
-    
-    Ok(authorization)
-}
-
-fn hmac_sha256(key: &[u8], data: &[u8]) -> Result<Vec<u8>, String> {
     use hmac::{Hmac, Mac};
     use sha2::Sha256;
     

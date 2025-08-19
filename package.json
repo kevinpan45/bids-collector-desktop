@@ -35,8 +35,6 @@
     "jsdom": "^24.1.0",
     "postcss": "8.4.35",
     "svelte": "^4.0.0",
-    "svelte-time": "^0.8.2",
-    "svelte-typeahead": "^4.4.1",
     "tailwindcss": "3.4.1",
     "vite": "^5.0.0",
     "vitest": "^1.6.0"
@@ -44,8 +42,6 @@
   "type": "module",
   "dependencies": {
     "@aws-sdk/client-s3": "^3.857.0",
-    "@aws-sdk/s3-request-presigner": "^3.859.0",
-    "@smithy/signature-v4": "^5.1.2",
     "@tauri-apps/api": "^2.7.0",
     "@tauri-apps/plugin-dialog": "^2.3.2",
     "@tauri-apps/plugin-fs": "^2.3.2",
