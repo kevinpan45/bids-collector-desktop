@@ -133,7 +133,6 @@ Comprehensive test suite in `src/lib/backgroundDownloads.test.js`:
 
 ## Configuration
 The system integrates with existing settings:
-- HTTP/HTTPS proxy support (already implemented)
 - Storage location configuration
 - Download concurrency limits (future)
 - Bandwidth throttling (future)
