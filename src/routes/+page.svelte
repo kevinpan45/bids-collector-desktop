@@ -1,10 +1,11 @@
 <script>
   import { onMount } from 'svelte';
+  import { logInfo } from '$lib/logger.js';
   
   let mounted = false;
-  onMount(() => {
+  onMount(async () => {
     mounted = true;
-    console.log('BIDS Collector started in local-first mode');
+    await logInfo('BIDS Collector main page loaded in local-first mode');
   });
 </script>
 

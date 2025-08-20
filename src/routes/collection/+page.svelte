@@ -14,6 +14,7 @@
     initializeBackgroundDownloads
   } from '$lib/backgroundDownloads.js';
   import { loadConfig } from '$lib/storage.js';
+  import { logInfo, logError, logWarning } from '$lib/logger.js';
   
   let collectionTasks = [];
   let loading = true;
@@ -36,8 +37,8 @@
     });
   
   onMount(async () => {
-    console.log('Collection management page loaded');
-    console.log('Environment status:', getBackgroundDownloadStatus());
+    logInfo('Collection management page loaded');
+    logInfo(`Environment status: ${getBackgroundDownloadStatus()}`);
     
     // Load collection tasks first (this doesn't depend on backend)
     await loadCollectionTasks();
@@ -47,7 +48,7 @@
     
     // Check if background downloads are supported in this environment
     if (!isBackgroundDownloadSupported()) {
-      console.log('Background downloads not supported in current environment');
+      logInfo('Background downloads not supported in current environment');
       toast('Running in web browser - background downloads unavailable', {
         duration: 5000,
         style: 'background: #3b82f6; color: white;' // Info color
@@ -62,7 +63,7 @@
           try {
             await refreshTasksQuietly();
           } catch (error) {
-            console.error('Failed to refresh tasks:', error);
+            logError(`Failed to refresh tasks: ${error.message}`);
           }
         }
       }, 5000); // Slower refresh for web environment
@@ -72,11 +73,11 @@
     
           // Test backend availability
       try {
-        console.log('Testing backend availability...');
+        logInfo('Testing backend availability...');
         backendAvailable = await testBackendAvailability();
-        console.log('Backend availability result:', backendAvailable);
+        logInfo(`Backend availability result: ${backendAvailable}`);
       } catch (error) {
-        console.error('Backend availability test failed:', error);
+        logError(`Backend availability test failed: ${error.message}`);
         backendAvailable = false;
       }
     

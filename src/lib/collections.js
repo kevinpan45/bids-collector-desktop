@@ -5,6 +5,7 @@
 
 import { loadConfig, saveConfig } from './storage.js';
 import { startBackgroundDownload, isTaskRunningInBackground } from './backgroundDownloads.js';
+import { logInfo, logError, logWarning } from './logger.js';
 
 /**
  * Generate download path based on dataset properties, using full DOI as folder name
@@ -127,10 +128,10 @@ export async function createCollectionTask(dataset, storageLocations) {
     // Save updated tasks
     await saveConfig('collections', { tasks });
     
-    console.log(`Created collection task: ${newTask.name} -> ${downloadPath}`);
+    logInfo(`Created collection task: ${newTask.name} -> ${downloadPath}`);
     return newTask;
   } catch (error) {
-    console.error('Failed to create collection task:', error);
+    logError(`Failed to create collection task: ${error.message}`);
     throw error;
   }
 }

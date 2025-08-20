@@ -5,6 +5,7 @@
   import axios from "axios";
   import { onMount } from "svelte";
   import { Toaster } from "svelte-french-toast";
+  import { initializeLogger, logInfo } from "$lib/logger.js";
   import "../app.css";
   
   let layoutMounted = false;
@@ -15,7 +16,10 @@
   onMount(async () => {
     layoutMounted = true;
     collapsed = sessionStorage.getItem("sidebar-collapsed") === "true";
-    console.log('BIDS Collector started in local-first mode');
+    
+    // Initialize logging system
+    await initializeLogger();
+    await logInfo('BIDS Collector started in local-first mode');
   });
 
   $: innerWidth = undefined;

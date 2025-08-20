@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use regex::Regex;
 use tauri::Emitter;
+use std::path::PathBuf;
 
 mod s3_client;
 use s3_client::test_s3_connection;
@@ -830,6 +831,52 @@ async fn cleanup_download_task(
     Ok("Download task cleaned up".to_string())
 }
 
+/// Initialize the logging system
+#[tauri::command]
+async fn initialize_logging(app_handle: tauri::AppHandle) -> Result<String, String> {
+    let app_dir = app_handle.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+    
+    // Create logs directory if it doesn't exist
+    let logs_dir = app_dir.join("logs");
+    if let Err(e) = fs::create_dir_all(&logs_dir).await {
+        return Err(format!("Failed to create logs directory: {}", e));
+    }
+    
+    log::info!("Logging system initialized. Logs directory: {:?}", logs_dir);
+    Ok("Logging system initialized".to_string())
+}
+
+/// Write a log entry to the application log file
+#[tauri::command]
+async fn write_log_entry(entry: String, app_handle: tauri::AppHandle) -> Result<String, String> {
+    let app_dir = app_handle.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+    
+    let log_file_path = app_dir.join("logs").join("app.log");
+    
+    // Append the log entry to the file
+    let entry_with_newline = format!("{}\n", entry);
+    
+    match fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_file_path)
+        .await
+    {
+        Ok(mut file) => {
+            if let Err(e) = file.write_all(entry_with_newline.as_bytes()).await {
+                return Err(format!("Failed to write to log file: {}", e));
+            }
+            if let Err(e) = file.flush().await {
+                return Err(format!("Failed to flush log file: {}", e));
+            }
+            Ok("Log entry written".to_string())
+        }
+        Err(e) => Err(format!("Failed to open log file: {}", e))
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let download_state: DownloadState = Arc::new(Mutex::new(HashMap::new()));
@@ -846,16 +893,31 @@ pub fn run() {
             get_all_download_progress,
             cancel_download_task,
             cleanup_download_task,
-            test_s3_connection
+            test_s3_connection,
+            initialize_logging,
+            write_log_entry
         ])
         .setup(|app| {
-            if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
-            }
+            // Initialize logging for both debug and release builds
+            let app_dir = app.handle().path().app_data_dir()
+                .map_err(|e| format!("Failed to get app data directory: {}", e))?;
+            
+            let logs_dir = app_dir.join("logs");
+            std::fs::create_dir_all(&logs_dir)
+                .map_err(|e| format!("Failed to create logs directory: {}", e))?;
+            
+            let log_file_path = logs_dir.join("tauri.log");
+            
+            app.handle().plugin(
+                tauri_plugin_log::Builder::default()
+                    .level(log::LevelFilter::Info)
+                    .target(tauri_plugin_log::Target::new(
+                        tauri_plugin_log::TargetKind::LogDir { file_name: Some("tauri".to_string()) }
+                    ))
+                    .build(),
+            )?;
+            
+            log::info!("Tauri application started");
             Ok(())
         })
         .run(tauri::generate_context!())
