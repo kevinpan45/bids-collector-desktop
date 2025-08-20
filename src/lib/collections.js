@@ -288,13 +288,13 @@ export async function startTaskDownload(taskId) {
       return true;
     }
     
-    if (task.status !== 'pending' && task.status !== 'failed' && task.status !== 'downloading') {
-      throw new Error(`Task ${taskId} is not in pending, failed, or downloading status (current: ${task.status})`);
+    if (task.status !== 'pending' && task.status !== 'failed' && task.status !== 'collecting') {
+      throw new Error(`Task ${taskId} is not in pending, failed, or collecting status (current: ${task.status})`);
     }
     
-    // If task is in downloading status but not actually running, reset it to pending
-    if (task.status === 'downloading') {
-      console.log(`Task ${taskId} was in downloading status but not running - resetting to pending`);
+    // If task is in collecting status but not actually running, reset it to pending
+    if (task.status === 'collecting') {
+      console.log(`Task ${taskId} was in collecting status but not running - resetting to pending`);
       task.status = 'pending';
       task.progress = 0;
       task.downloadedSize = 0;
@@ -346,7 +346,7 @@ export async function startTaskDownload(taskId) {
     
     // Update task status to indicate it's starting
     await updateCollectionTask(taskId, {
-      status: 'downloading',
+      status: 'collecting',
       startedAt: new Date().toISOString(),
       progress: 0,
       errorMessage: null

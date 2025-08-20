@@ -367,11 +367,11 @@ async fn perform_download(
     
     println!("Using storage location: type={}, path={}", storage_type, storage_path);
     
-    // Update status to downloading
+    // Update status to collecting
     {
         let mut downloads = state.lock().unwrap();
         if let Some(progress) = downloads.get_mut(&task_id) {
-            progress.status = "downloading".to_string();
+            progress.status = "collecting".to_string();
         }
     }
     
@@ -531,7 +531,7 @@ async fn upload_openneuro_to_s3(
         if let Some(progress) = downloads.get_mut(task_id) {
             progress.total_files = Some(total_files);
             progress.total_size = total_size;
-            progress.status = "uploading".to_string();
+            progress.status = "collecting".to_string();
         }
     }
     

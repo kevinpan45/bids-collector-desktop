@@ -24,7 +24,7 @@
   let showStatusDetails = false;
   
   // Filter and view options
-  let statusFilter = 'all'; // 'all', 'pending', 'downloading', 'completed', 'failed', 'paused'
+  let statusFilter = 'all'; // 'all', 'pending', 'collecting', 'completed', 'failed', 'paused'
   
   $: filteredTasks = collectionTasks
     .filter(task => statusFilter === 'all' || task.status === statusFilter)
@@ -53,7 +53,7 @@
         style: 'background: #3b82f6; color: white;' // Info color
       });
       
-      // Reset any tasks that are stuck in "downloading" status in web browser
+      // Reset any tasks that are stuck in "collecting" status in web browser
       await resetStuckDownloadTasks();
       
       // Still set up basic refresh interval for the web environment
@@ -193,7 +193,7 @@
     try {
       console.log('Checking for stuck download tasks in web browser environment...');
       const tasks = await getAllCollectionTasks();
-      const stuckTasks = tasks.filter(task => task.status === 'downloading');
+      const stuckTasks = tasks.filter(task => task.status === 'collecting');
       
       if (stuckTasks.length > 0) {
         console.log(`Found ${stuckTasks.length} stuck download tasks, resetting them...`);
@@ -231,7 +231,7 @@
   function getStatusIcon(status) {
     switch(status) {
       case 'pending': return '⏳';
-      case 'downloading': return '⬇️';
+      case 'collecting': return '📥';
       case 'completed': return '✅';
       case 'failed': return '❌';
       case 'paused': return '⏸️';
@@ -242,12 +242,17 @@
   function getStatusColor(status) {
     switch(status) {
       case 'pending': return 'badge-warning';
-      case 'downloading': return 'badge-info';
+      case 'collecting': return 'badge-info';
       case 'completed': return 'badge-success';
       case 'failed': return 'badge-error';
       case 'paused': return 'badge-neutral';
       default: return 'badge-ghost';
     }
+  }
+  
+  function getStatusText(status) {
+    // All statuses just use their uppercase form now
+    return status.toUpperCase();
   }
   
   function formatDuration(startTime, endTime) {
@@ -317,7 +322,7 @@
     const taskIndex = collectionTasks.findIndex(task => task.id === taskId);
     if (taskIndex === -1) return;
     
-    const updates = { status: 'downloading' };
+    const updates = { status: 'collecting' };
     
     updateCollectionTask(taskId, updates).then(() => {
       collectionTasks[taskIndex] = { ...collectionTasks[taskIndex], ...updates };
@@ -405,7 +410,7 @@
       // Update UI to show download starting
       collectionTasks[taskIndex] = { 
         ...task, 
-        status: 'downloading',
+        status: 'collecting',
         startedAt: new Date().toISOString(),
         progress: 0,
         errorMessage: null
@@ -529,7 +534,7 @@
         </div>
         <div class="flex items-center gap-4">
           <p class="text-base-content/60">Track and manage your dataset download tasks</p>
-          {#if collectionTasks.some(task => task.status === 'downloading')}
+          {#if collectionTasks.some(task => task.status === 'collecting')}
             <div class="flex items-center gap-2 text-info">
               <span class="loading loading-dots loading-xs"></span>
               <span class="text-sm">Downloads active • Auto-refreshing</span>
@@ -621,7 +626,7 @@
         <select id="status-filter" class="select select-bordered select-sm w-40" bind:value={statusFilter}>
           <option value="all">All Tasks</option>
           <option value="pending">Pending</option>
-          <option value="downloading">Downloading</option>
+          <option value="collecting">Collecting</option>
           <option value="completed">Completed</option>
           <option value="failed">Failed</option>
           <option value="paused">Paused</option>
@@ -676,7 +681,7 @@
                 </div>
                 <div class="flex flex-wrap gap-2 items-center">
                   <span class="badge {getStatusColor(task.status)} badge-sm">
-                    {getStatusIcon(task.status)} {task.status.toUpperCase()}
+                    {getStatusIcon(task.status)} {getStatusText(task.status)}
                   </span>
                   <span class="text-xs text-base-content/50">
                     Created: {new Date(task.createdAt).toLocaleString()}
@@ -708,8 +713,10 @@
                       </button>
                     </li>
                   {/if}
-                  {#if task.status === 'downloading'}
-                    <li><button type="button" on:click={() => pauseTask(task.id)}>Pause Task</button></li>
+                  {#if task.status === 'collecting'}
+                    <li><button type="button" on:click={() => pauseTask(task.id)}>
+                      Cancel Collection
+                    </button></li>
                   {/if}
                   {#if task.status === 'paused'}
                     <li>
@@ -739,7 +746,7 @@
             </div>
             
             <!-- Progress Bar -->
-            {#if task.status === 'downloading' || task.status === 'completed' || task.status === 'paused'}
+            {#if task.status === 'collecting' || task.status === 'completed' || task.status === 'paused'}
               <div class="mb-4">
                 <div class="flex justify-between text-sm mb-2">
                   <span>Progress: {Math.round(task.progress || 0)}%</span>
@@ -752,7 +759,7 @@
                     {/if}
                   </span>
                 </div>
-                {#if task.status === 'downloading' && (task.currentFile || task.totalFiles)}
+                {#if task.status === 'collecting' && (task.currentFile || task.totalFiles)}
                   <div class="text-xs text-base-content/60 mb-1">
                     {#if task.currentFile}
                       Current: {task.currentFile}

@@ -220,7 +220,7 @@ export async function listenToDownloadProgress(onProgress) {
 export async function isTaskRunningInBackground(taskId) {
   try {
     const progress = await getDownloadProgress(taskId);
-    return !!progress && (progress.status === 'downloading' || progress.status === 'starting');
+    return !!progress && (progress.status === 'collecting' || progress.status === 'starting');
   } catch (error) {
     console.error('Failed to check if task is running in background:', error);
     return false;
@@ -323,11 +323,11 @@ async function cleanupOrphanedTasks() {
   try {
     const backendProgress = await getAllDownloadProgress();
     
-    // Find tasks that have been "downloading" for too long (more than 1 hour) without progress
+    // Find tasks that have been "collecting" for too long (more than 1 hour) without progress
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
     
     for (const progress of backendProgress) {
-      if (progress.status === 'downloading' && progress.started_at) {
+      if (progress.status === 'collecting' && progress.started_at) {
         const startedAt = new Date(progress.started_at);
         if (startedAt < oneHourAgo && progress.progress === 0) {
           console.log(`Cleaning up orphaned task: ${progress.task_id}`);
