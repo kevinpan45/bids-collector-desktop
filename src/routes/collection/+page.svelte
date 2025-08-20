@@ -23,6 +23,9 @@
   let storageConfigured = false;
   let showStatusDetails = false;
   
+  // Track expanded state of task cards
+  let expandedTasks = new Set();
+  
   // Filter and view options
   let statusFilter = 'all'; // 'all', 'pending', 'collecting', 'completed', 'failed', 'paused'
   
@@ -273,6 +276,15 @@
     } else {
       return `${seconds}s`;
     }
+  }
+  
+  function toggleTaskExpanded(taskId) {
+    if (expandedTasks.has(taskId)) {
+      expandedTasks.delete(taskId);
+    } else {
+      expandedTasks.add(taskId);
+    }
+    expandedTasks = expandedTasks; // Trigger reactivity
   }
   
   function startTask(taskId) {
@@ -689,6 +701,23 @@
                 </div>
               </div>
               
+              <!-- Expand/Collapse Button -->
+              <button 
+                class="btn btn-ghost btn-sm mr-2"
+                on:click={() => toggleTaskExpanded(task.id)}
+                title={expandedTasks.has(task.id) ? 'Collapse details' : 'Expand details'}
+              >
+                {#if expandedTasks.has(task.id)}
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7" />
+                  </svg>
+                {:else}
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                  </svg>
+                {/if}
+              </button>
+              
               <!-- Task Actions -->
               <div class="dropdown dropdown-end">
                 <div tabindex="0" role="button" class="btn btn-ghost btn-sm">
@@ -745,94 +774,97 @@
               </div>
             </div>
             
-            <!-- Progress Bar -->
-            {#if task.status === 'collecting' || task.status === 'completed' || task.status === 'paused'}
-              <div class="mb-4">
-                <div class="flex justify-between text-sm mb-2">
-                  <span>Progress: {Math.round(task.progress || 0)}%</span>
-                  <span>
-                    {#if task.totalSize > 0}
-                      {formatFileSize(task.downloadedSize)} / {formatFileSize(task.totalSize)}
-                    {/if}
-                    {#if task.speed > 0}
-                      • {formatFileSize(task.speed)}/s
-                    {/if}
-                  </span>
-                </div>
-                {#if task.status === 'collecting' && (task.currentFile || task.totalFiles)}
-                  <div class="text-xs text-base-content/60 mb-1">
-                    {#if task.currentFile}
-                      Current: {task.currentFile}
-                    {/if}
-                    {#if task.totalFiles > 0}
-                      • Files: {task.completedFiles || 0}/{task.totalFiles}
-                    {/if}
+            <!-- Collapsible Details -->
+            {#if expandedTasks.has(task.id)}
+              <!-- Progress Bar -->
+              {#if task.status === 'collecting' || task.status === 'completed' || task.status === 'paused'}
+                <div class="mb-4">
+                  <div class="flex justify-between text-sm mb-2">
+                    <span>Progress: {Math.round(task.progress || 0)}%</span>
+                    <span>
+                      {#if task.totalSize > 0}
+                        {formatFileSize(task.downloadedSize)} / {formatFileSize(task.totalSize)}
+                      {/if}
+                      {#if task.speed > 0}
+                        • {formatFileSize(task.speed)}/s
+                      {/if}
+                    </span>
                   </div>
-                {/if}
-                <progress 
-                  class="progress progress-primary w-full" 
-                  value={task.progress || 0} 
-                  max="100"
-                ></progress>
-              </div>
-            {/if}
-            
-            <!-- Error Message -->
-            {#if task.status === 'failed' && task.errorMessage}
-              <div class="alert alert-error mb-4">
-                <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <span>{task.errorMessage}</span>
-              </div>
-            {/if}
-            
-            <!-- Storage Locations -->
-            <div class="mb-4">
-              <h4 class="font-semibold text-sm mb-2">Download Paths:</h4>
-              <div class="space-y-2">
-                {#each task.storageLocations as location}
-                  {@const fullPath = getFullDownloadPath(task, location)}
-                  <div class="border border-base-300 rounded-lg p-3 bg-base-50">
-                    <div class="flex items-center justify-between gap-2">
-                      <div class="flex-1 min-w-0">
-                        <div class="flex items-center gap-2 mb-1">
-                          <span class="badge badge-outline badge-sm">
-                            {location.type === 'local' ? '📁' : '☁️'} {location.name}
-                          </span>
+                  {#if task.status === 'collecting' && (task.currentFile || task.totalFiles)}
+                    <div class="text-xs text-base-content/60 mb-1">
+                      {#if task.currentFile}
+                        Current: {task.currentFile}
+                      {/if}
+                      {#if task.totalFiles > 0}
+                        • Files: {task.completedFiles || 0}/{task.totalFiles}
+                      {/if}
+                    </div>
+                  {/if}
+                  <progress 
+                    class="progress progress-primary w-full" 
+                    value={task.progress || 0} 
+                    max="100"
+                  ></progress>
+                </div>
+              {/if}
+              
+              <!-- Error Message -->
+              {#if task.status === 'failed' && task.errorMessage}
+                <div class="alert alert-error mb-4">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span>{task.errorMessage}</span>
+                </div>
+              {/if}
+              
+              <!-- Storage Locations -->
+              <div class="mb-4">
+                <h4 class="font-semibold text-sm mb-2">Download Paths:</h4>
+                <div class="space-y-2">
+                  {#each task.storageLocations as location}
+                    {@const fullPath = getFullDownloadPath(task, location)}
+                    <div class="border border-base-300 rounded-lg p-3 bg-base-50">
+                      <div class="flex items-center justify-between gap-2">
+                        <div class="flex-1 min-w-0">
+                          <div class="flex items-center gap-2 mb-1">
+                            <span class="badge badge-outline badge-sm">
+                              {location.type === 'local' ? '📁' : '☁️'} {location.name}
+                            </span>
+                          </div>
+                          <div class="text-xs text-base-content/60 font-mono break-all">
+                            <span class="font-semibold">Full Path:</span> {fullPath}
+                          </div>
                         </div>
-                        <div class="text-xs text-base-content/60 font-mono break-all">
-                          <span class="font-semibold">Full Path:</span> {fullPath}
+                        <div class="flex gap-1">
+                          <button 
+                            class="btn btn-ghost btn-xs"
+                            on:click={() => copyToClipboard(fullPath)}
+                            title="Copy path to clipboard"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                            </svg>
+                          </button>
                         </div>
-                      </div>
-                      <div class="flex gap-1">
-                        <button 
-                          class="btn btn-ghost btn-xs"
-                          on:click={() => copyToClipboard(fullPath)}
-                          title="Copy path to clipboard"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                          </svg>
-                        </button>
                       </div>
                     </div>
-                  </div>
-                {/each}
+                  {/each}
+                </div>
               </div>
-            </div>
-            
-            <!-- Task Timing -->
-            <div class="flex justify-between text-xs text-base-content/60">
-              <span>
-                Duration: {formatDuration(task.startedAt, task.completedAt)}
-              </span>
-              {#if task.completedAt}
-                <span>Completed: {new Date(task.completedAt).toLocaleString()}</span>
-              {:else if task.startedAt}
-                <span>Started: {new Date(task.startedAt).toLocaleString()}</span>
-              {/if}
-            </div>
+              
+              <!-- Task Timing -->
+              <div class="flex justify-between text-xs text-base-content/60">
+                <span>
+                  Duration: {formatDuration(task.startedAt, task.completedAt)}
+                </span>
+                {#if task.completedAt}
+                  <span>Completed: {new Date(task.completedAt).toLocaleString()}</span>
+                {:else if task.startedAt}
+                  <span>Started: {new Date(task.startedAt).toLocaleString()}</span>
+                {/if}
+              </div>
+            {/if}
           </div>
         </div>
       {/each}
