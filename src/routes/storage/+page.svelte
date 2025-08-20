@@ -481,7 +481,7 @@
     <div>
       <h3 class="font-bold">Configuration Storage</h3>
       <div class="text-sm">
-        Storage locations are automatically saved to: <code class="bg-base-200 px-1 rounded">{configPath}</code>
+        Storage locations are automatically saved to: <code class="px-1 rounded">{configPath}</code>
       </div>
     </div>
   </div>
