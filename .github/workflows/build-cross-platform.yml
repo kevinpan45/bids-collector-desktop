@@ -72,12 +72,12 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tagName: latest-${{ matrix.bundle-identifier }}
-        releaseName: 'Latest Build (${{ matrix.bundle-identifier }})'
+        tagName: latest
+        releaseName: 'Latest Build'
         releaseBody: |
-          🚧 **Latest Development Build - ${{ matrix.bundle-identifier }}**
+          🚧 **Latest Development Build**
           
-          This is the latest build from the main branch for ${{ matrix.bundle-identifier }}.
+          This is the latest build from the main branch.
           
           **Platform**: ${{ matrix.bundle-identifier }}
           **Branch**: ${{ github.ref_name }}
