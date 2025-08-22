@@ -1,4 +1,4 @@
-name: Build Windows Desktop App
+name: Build Cross-Platform Desktop App
 
 on:
   push:
@@ -10,8 +10,29 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-windows:
-    runs-on: windows-latest
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'macos-latest'
+            args: '--target x86_64-apple-darwin'
+            rust-target: 'x86_64-apple-darwin'
+            bundle-identifier: 'macOS x64'
+          - platform: 'macos-latest' 
+            args: '--target aarch64-apple-darwin'
+            rust-target: 'aarch64-apple-darwin'
+            bundle-identifier: 'macOS ARM64'
+          - platform: 'ubuntu-20.04'
+            args: '--target x86_64-unknown-linux-gnu'
+            rust-target: 'x86_64-unknown-linux-gnu'
+            bundle-identifier: 'Linux x64'
+          - platform: 'windows-latest'
+            args: '--target x86_64-pc-windows-msvc'
+            rust-target: 'x86_64-pc-windows-msvc'
+            bundle-identifier: 'Windows x64'
+
+    runs-on: ${{ matrix.platform }}
     permissions:
       contents: write
     
@@ -28,7 +49,13 @@ jobs:
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
       with:
-        targets: x86_64-pc-windows-msvc
+        targets: ${{ matrix.rust-target }}
+
+    - name: Install dependencies (Ubuntu only)
+      if: matrix.platform == 'ubuntu-20.04'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev libayatana-appindicator3-dev librsvg2-dev
 
     - name: Install frontend dependencies
       run: |
@@ -45,13 +72,14 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tagName: latest
-        releaseName: 'Latest Build'
+        tagName: latest-${{ matrix.bundle-identifier }}
+        releaseName: 'Latest Build (${{ matrix.bundle-identifier }})'
         releaseBody: |
-          🚧 **Latest Development Build**
+          🚧 **Latest Development Build - ${{ matrix.bundle-identifier }}**
           
-          This is the latest build from the main branch.
+          This is the latest build from the main branch for ${{ matrix.bundle-identifier }}.
           
+          **Platform**: ${{ matrix.bundle-identifier }}
           **Branch**: ${{ github.ref_name }}
           **Commit**: ${{ github.sha }}
           **Build**: #${{ github.run_number }}
@@ -60,7 +88,7 @@ jobs:
           ⚠️ This build is automatically updated and may contain unstable features.
         releaseDraft: false
         prerelease: true
-        args: --target x86_64-pc-windows-msvc
+        args: ${{ matrix.args }}
 
     - name: Build Tauri app (release build)
       if: github.ref_type == 'tag'
@@ -79,6 +107,15 @@ jobs:
           - Download the `.msi` file for Windows Installer  
           - Download the `.exe` file for NSIS Installer
           
+          **macOS:**
+          - Download the `.dmg` file for macOS Installer
+          - For Apple Silicon Macs, choose the ARM64 version
+          - For Intel Macs, choose the x64 version
+          
+          **Linux:**
+          - Download the `.deb` file for Debian/Ubuntu
+          - Download the `.AppImage` file for universal Linux support
+          
           ## What's Changed
           
           See the commits included in this release for detailed changes.
@@ -86,4 +123,4 @@ jobs:
           **Full Changelog**: https://github.com/${{ github.repository }}/commits/${{ github.ref_name }}
         releaseDraft: false
         prerelease: false
-        args: --target x86_64-pc-windows-msvc
+        args: ${{ matrix.args }}

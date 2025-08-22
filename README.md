@@ -7,31 +7,40 @@ A desktop application for BIDS data collection and management, built with Tauri 
 - 🧠 **BIDS Compliance**: Proper Brain Imaging Data Structure organization
 - 📊 **Dataset Management**: Create, validate, and export BIDS datasets  
 - 💾 **Storage Monitoring**: Track local, external, and network storage locations
-- 🖥️ **Desktop Native**: Cross-platform desktop app with native performance
+- 🖥️ **Cross-Platform**: Windows, macOS, and Linux support
 - 🌐 **Modern Web Interface**: Responsive design with clean UI built with SvelteKit
 - 🎨 **Beautiful UI**: Tailwind CSS and DaisyUI components
-- � **Fast & Secure**: Rust backend with web frontend via Tauri
+- ⚡ **Fast & Secure**: Rust backend with web frontend via Tauri
 - 💾 **Local-First**: Offline functionality without authentication barriers
 
-## Building for Windows x64
+## Cross-Platform Support
 
-This project uses **GitHub Actions** for automated building. The Windows x64 desktop application is built automatically in the cloud.
+This project supports **Windows**, **macOS**, and **Linux** platforms with automated builds via GitHub Actions.
 
 ### 🚀 Automated Build Process
 
 1. **Push your code** to the GitHub repository
-2. **GitHub Actions automatically builds** the Windows x64 application
-3. **Download the built app** from the Actions tab as artifacts
+2. **GitHub Actions automatically builds** for all platforms
+3. **Download the built apps** from the Actions tab as artifacts
 
-### 📦 Download Built Application
+### 📦 Platform Support
+
+| Platform | Architecture | Bundle Formats |
+|----------|-------------|----------------|
+| **Windows** | x64 | MSI, NSIS |
+| **macOS** | x64, ARM64 | DMG, APP |
+| **Linux** | x64 | DEB, AppImage |
+
+### 📥 Download Built Applications
 
 After pushing code to GitHub:
 
 1. Go to the **Actions** tab in your GitHub repository
-2. Click on the latest **"Build Windows Desktop App"** workflow run
-3. Download the artifacts:
-   - `windows-installers` - Contains MSI and NSIS installer packages
-   - `windows-executable` - Contains the standalone .exe file
+2. Click on the latest **"Build Cross-Platform Desktop App"** workflow run
+3. Download the artifacts for your platform:
+   - `windows-*` - Windows installers and executables
+   - `macos-*` - macOS disk images and app bundles
+   - `linux-*` - Linux packages and AppImages
 
 ### 🔄 Triggering a Build
 
@@ -43,21 +52,46 @@ Builds are automatically triggered when you:
 ### 📋 What Gets Built
 
 The GitHub Actions workflow creates:
+
+**Windows:**
 - **MSI Installer** - Windows installer package
 - **NSIS Installer** - Alternative Windows installer
-- **Standalone Executable** - Direct .exe file
 
-All targeting **Windows x64** (`x86_64-pc-windows-msvc`)
+**macOS:**
+- **DMG** - macOS disk image
+- **APP Bundle** - macOS application bundle
+- Both Intel (x64) and Apple Silicon (ARM64) versions
 
-## Development
+**Linux:**
+- **DEB Package** - Debian/Ubuntu package
+- **AppImage** - Universal Linux application
 
-### Prerequisites (Development Only)
+## Building Locally
 
-For local development:
-- Node.js (v16 or higher) - Required for frontend development
-- Rust (latest stable) - Only needed for `npm run tauri:dev`
+### Prerequisites
 
-*Note: Production builds are handled automatically by GitHub Actions - no local setup required*
+For local development and building:
+- Node.js (v20 or higher)
+- Rust (latest stable)
+- Platform-specific dependencies (see below)
+
+### Platform-Specific Dependencies
+
+**Linux:**
+```bash
+sudo apt-get update
+sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev libayatana-appindicator3-dev librsvg2-dev
+```
+
+**macOS:**
+```bash
+# No additional dependencies required
+```
+
+**Windows:**
+```bash
+# No additional dependencies required
+```
 
 ### Installation
 
@@ -72,48 +106,56 @@ cd bids-collector-desktop
 npm install
 ```
 
-### Run in Development Mode
-
-```bash
-npm run tauri:dev
-```
-
 ### Available Scripts
 
+**Development:**
 - `npm run dev` - Start frontend development server only
-- `npm run build` - Build frontend for production
-- `npm run tauri:dev` - Run desktop app in development mode (requires local Rust setup)
+- `npm run tauri:dev` - Run desktop app in development mode
 
-*Note: Production builds are handled automatically by GitHub Actions*
+**Building:**
+- `npm run build` - Build frontend for production
+- `npm run tauri:build` - Build for current platform
+- `npm run tauri:build:win` - Build for Windows x64
+- `npm run tauri:build:linux` - Build for Linux x64
+- `npm run tauri:build:macos` - Build for macOS x64
+- `npm run tauri:build:macos-arm` - Build for macOS ARM64
+
+**Cross-Platform Build Script:**
+```bash
+./build-all-platforms.sh
+```
+
+This interactive script helps you build for specific platforms or all platforms at once.
 
 ## Project Structure
 
 ```
 bids-collector-desktop/
 ├── .github/workflows/
-│   └── build-windows.yml     # GitHub Actions build workflow
-├── src/                      # SvelteKit frontend
-│   ├── routes/              # App pages/routes
-│   │   ├── dataset/         # Dataset management interface  
-│   │   └── storage/         # Storage monitoring interface
-│   ├── component/           # Reusable Svelte components
-│   │   ├── icon/            # Icon component system
-│   │   ├── Navbar.svelte    # Application header
-│   │   └── Sidebar.svelte   # Navigation sidebar
-│   ├── lib/                 # Utilities and configuration
-│   │   ├── menu.js          # Navigation menu config
-│   │   └── svgs/            # Static SVG icons
-│   └── app.html             # HTML template
-├── src-tauri/               # Tauri Rust backend
-│   ├── src/                 # Rust source code
-│   │   ├── main.rs          # Main Tauri app
-│   │   └── lib.rs           # Library functions
-│   ├── icons/               # Application icons
-│   ├── tauri.conf.json      # Tauri configuration
-│   └── Cargo.toml           # Rust dependencies
-├── build/                   # Built frontend files (generated)
-├── static/                  # Static assets
-└── package.json             # Node.js dependencies and scripts
+│   └── build-cross-platform.yml  # GitHub Actions build workflow
+├── src/                          # SvelteKit frontend
+│   ├── routes/                  # App pages/routes
+│   │   ├── dataset/             # Dataset management interface  
+│   │   └── storage/             # Storage monitoring interface
+│   ├── component/               # Reusable Svelte components
+│   │   ├── icon/                # Icon component system
+│   │   ├── Navbar.svelte        # Application header
+│   │   └── Sidebar.svelte       # Navigation sidebar
+│   ├── lib/                     # Utilities and configuration
+│   │   ├── menu.js              # Navigation menu config
+│   │   └── svgs/                # Static SVG icons
+│   └── app.html                 # HTML template
+├── src-tauri/                   # Tauri Rust backend
+│   ├── src/                     # Rust source code
+│   │   ├── main.rs              # Main Tauri app
+│   │   └── lib.rs               # Library functions
+│   ├── icons/                   # Application icons
+│   ├── tauri.conf.json          # Tauri configuration
+│   └── Cargo.toml               # Rust dependencies
+├── build/                       # Built frontend files (generated)
+├── static/                      # Static assets
+├── build-all-platforms.sh       # Cross-platform build script
+└── package.json                 # Node.js dependencies and scripts
 ```
 
 ## Technology Stack
@@ -128,9 +170,12 @@ bids-collector-desktop/
 ## Configuration
 
 The application is configured for:
-- **Target Platform**: Windows x64 (x86_64-pc-windows-msvc)
-- **Window Size**: 800x600 (resizable)
-- **Bundle Formats**: MSI and NSIS installers
+- **Target Platforms**: Windows x64, macOS (x64 + ARM64), Linux x64
+- **Window Size**: 1200x800 (resizable, minimum 800x600)
+- **Bundle Formats**: 
+  - Windows: MSI and NSIS installers
+  - macOS: DMG and APP bundle
+  - Linux: DEB package and AppImage
 - **App ID**: com.bids-collector.desktop
 
 ## Troubleshooting
@@ -142,16 +187,25 @@ For deployment and build process details, see [DEPLOYMENT.md](DEPLOYMENT.md).
 If the GitHub Actions build fails:
 
 1. **Check the Actions tab** in your GitHub repository for error logs
-2. **Verify the workflow file** is present at `.github/workflows/build-windows.yml`
+2. **Verify the workflow file** is present at `.github/workflows/build-cross-platform.yml`
 3. **Ensure your code is pushed** to the main or develop branch
 4. **Manual trigger**: Use the "Run workflow" button in the Actions tab
+5. **Platform-specific issues**: Check if specific platform builds are failing
 
 ### Development Issues
 
 1. **Frontend development**: Only requires Node.js - `npm run dev`
 2. **Local Tauri development**: Requires Rust toolchain - `npm run tauri:dev`
-3. **Node.js version**: Ensure you're using Node.js 16+
+3. **Node.js version**: Ensure you're using Node.js 20+
 4. **Dependencies**: Run `npm install` after cloning
+5. **Platform dependencies**: Install platform-specific dependencies (see above)
+
+### Cross-Platform Building Issues
+
+1. **Linux**: Install required system dependencies before building
+2. **macOS**: May require Xcode Command Line Tools
+3. **Windows**: Requires Visual Studio Build Tools or MSVC
+4. **Cross-compilation**: Use the provided build script for guided building
 
 ## Local-First Architecture
 

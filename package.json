@@ -19,6 +19,9 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "tauri:build:win": "tauri build --target x86_64-pc-windows-msvc --ci",
+    "tauri:build:linux": "tauri build --target x86_64-unknown-linux-gnu --ci",
+    "tauri:build:macos": "tauri build --target x86_64-apple-darwin --ci",
+    "tauri:build:macos-arm": "tauri build --target aarch64-apple-darwin --ci",
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:run": "vitest run"
