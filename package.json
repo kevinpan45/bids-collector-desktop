@@ -43,7 +43,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.879.0",
     "@tauri-apps/api": "^2.7.0",
-    "@tauri-apps/plugin-dialog": "^2.3.2",
+    "@tauri-apps/plugin-dialog": "^2.3.3",
     "@tauri-apps/plugin-fs": "^2.3.2",
     "@tauri-apps/plugin-http": "^2.5.1",
     "@tauri-apps/plugin-shell": "^2.3.0",
